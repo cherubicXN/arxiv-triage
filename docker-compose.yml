@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: arx
+      POSTGRES_PASSWORD: arx
+      POSTGRES_DB: arx
+    ports: ["5432:5432"]
+    volumes:
+      - arx-pg:/var/lib/postgresql/data
+volumes:
+  arx-pg:

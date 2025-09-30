@@ -1,0 +1,14 @@
+sources:
+  cats: [cs.CV, cs.LG]
+  window_days: 1
+  max_results: 200
+filters:
+  include: ["line", "plane", "wireframe", "mapping"]
+  exclude: ["medical imaging survey", "reinforcement learning survey"]
+quotas:
+  outside_zone_daily: 3
+scorer:
+  rubric_weights: { novelty: 0.3, evidence: 0.25, clarity: 0.2, reusability: 0.1, fit: 0.15 }
+output:
+  digest_top_k: 10
+  watchlist_k: 20

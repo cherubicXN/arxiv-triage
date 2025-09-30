@@ -1,0 +1,50 @@
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.tox/
+.nox/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Node / frontend
+node_modules/
+.parcel-cache/
+.turbo/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environments
+.env
+.env.*
+!.env.example
+
+# Databases
+arx.db
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+.python-version
+
+# Misc
+*.log
