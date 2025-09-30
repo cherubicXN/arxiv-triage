@@ -20,9 +20,20 @@ import type { Paper, ListResp } from "./types";
 
 // ==== Config / Utilities ====
 // (cls, timeAgo moved to ./utils)
-const API_BASE = (import.meta as any)?.env?.VITE_ARX_API ||
+// Allow overriding API base via query param `?api=` for easy LAN wiring.
+const PARAM_API = (() => {
+  try {
+    if (typeof window !== "undefined") {
+      const u = new URL(window.location.href);
+      return u.searchParams.get("api");
+    }
+  } catch {}
+  return null;
+})();
+const API_BASE = PARAM_API ||
+  (import.meta as any)?.env?.VITE_ARX_API ||
   (typeof process !== "undefined" ? (process as any).env?.NEXT_PUBLIC_ARX_API : null) ||
-  "http://localhost:8787";
+  "http://192.168.50.153:8787";
 
 function useDebounced<T>(value: T, ms = 300) {
   const [deb, setDeb] = useState(value);
@@ -73,6 +84,20 @@ async function removeTags(paperId: number, tags: string[]) {
 }
 
 export default function App() {
+  // Show a small connectivity banner so misconfig is obvious
+  const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "fail">("checking");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/`, { mode: "cors" });
+        if (!cancelled) setApiStatus(r.ok ? "ok" : "fail");
+      } catch {
+        if (!cancelled) setApiStatus("fail");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [query, setQuery] = useState("");
   const q = useDebounced(query, 250);
   const [stateFilter, setStateFilter] = useState<Paper["state"]|"">("triage");
@@ -217,6 +242,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* API status banner */}
+      <div className="fixed top-3 right-3 z-50 text-xs">
+        <a
+          href={`${API_BASE}/docs`}
+          target="_blank"
+          rel="noreferrer"
+          className={
+            "inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 shadow-sm " +
+            (apiStatus === "ok" ? "bg-green-50 border-green-200 text-green-700" :
+             apiStatus === "checking" ? "bg-yellow-50 border-yellow-200 text-yellow-700" :
+             "bg-red-50 border-red-200 text-red-700")
+          }
+          title="Click to open API docs"
+        >
+          <span className="font-medium">API</span>
+          <span className="truncate max-w-[22ch]" style={{direction: 'ltr'}}>{API_BASE}</span>
+          <span>· {apiStatus === "checking" ? "checking…" : apiStatus === "ok" ? "ok" : "unreachable"}</span>
+        </a>
+        {apiStatus === "fail" && (
+          <div className="mt-1 text-[10px] text-gray-600">
+            Hint: pass ?api=http://LAN_IP:8787 in the URL
+          </div>
+        )}
+      </div>
       <TopBar
         query={query}
         setQuery={setQuery}

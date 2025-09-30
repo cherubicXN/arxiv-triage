@@ -66,6 +66,7 @@ export default function PaperRow({ p, checked, onToggle, onOpen, onShortlist, on
         <div className="mt-1 flex items-center gap-2 text-xs text-gray-600">
           <Pill>{p.primary_category}</Pill>
           {p.updated_at && <span>{timeAgo(p.updated_at)}</span>}
+          <Pill>{p.arxiv_id}</Pill>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
           {(existing.length > 0) ? (
@@ -103,8 +104,8 @@ export default function PaperRow({ p, checked, onToggle, onOpen, onShortlist, on
       <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
         <IconBtn title="Shortlist" onClick={onShortlist}>✔︎</IconBtn>
         <IconBtn title="Archive" onClick={onArchive}>🗂</IconBtn>
-        <IconBtn title="Tag" onClick={() => setTagOpen((v)=>!v)}>🏷️</IconBtn>
         <a title="Abs" href={p.links_abs} target="_blank" className="rounded-lg border px-2 py-1 hover:bg-gray-50">abs ↗</a>
+        <a title="PDF" href={p.links_pdf} target="_blank" className="rounded-lg border px-2 py-1 hover:bg-gray-50">PDF ↗</a>
       </div>
       {tagOpen && (
         <div ref={menuRef} className="absolute right-3 top-10 z-20 w-56 bg-white border rounded-xl shadow-lg p-2">

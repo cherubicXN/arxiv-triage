@@ -18,6 +18,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Allow Private Network Access preflight from public origins to local (RFC draft)
+# When a public origin (e.g., your frp domain) requests a 192.168.x.x API,
+# browsers send an OPTIONS preflight with `Access-Control-Request-Private-Network: true`.
+# We must reply with `Access-Control-Allow-Private-Network: true`.
+@app.middleware("http")
+async def allow_private_network(request, call_next):
+    response = await call_next(request)
+    try:
+        if request.method == "OPTIONS" and request.headers.get("Access-Control-Request-Private-Network", "").lower() == "true":
+            response.headers["Access-Control-Allow-Private-Network"] = "true"
+    except Exception:
+        pass
+    return response
+
 @app.on_event("startup")
 async def startup_event():
     await init_db()
