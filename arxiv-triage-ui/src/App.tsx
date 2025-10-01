@@ -173,6 +173,7 @@ export default function App() {
   const [autoOpenOnMove, setAutoOpenOnMove] = useState<boolean>(false);
   const [singleStatus, setSingleStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const [batchProg, setBatchProg] = useState<{ total: number; done: number; label: string } | null>(null);
+  const [pdfModal, setPdfModal] = useState<{ arxivId: string } | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -316,7 +317,7 @@ export default function App() {
     function onKey(e: any) {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
       if (e.key === "/") { e.preventDefault(); const inp = document.querySelector<HTMLInputElement>("input"); inp?.focus(); return; }
-      if (e.key === "Escape") { setDrawer(null); return; }
+      if (e.key === "Escape") { if (pdfModal) { setPdfModal(null); return; } setDrawer(null); return; }
 
       const ids = (visibleItems || []).map(p=>p.id);
       if (!ids.length) return;
@@ -350,7 +351,7 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [visibleItems, cursorId, autoOpenOnMove, page, pageSize, total]);
+  }, [visibleItems, cursorId, autoOpenOnMove, page, pageSize, total, pdfModal]);
 
   // Derived
   const anyChecked = useMemo(()=> Object.values(checked).some(Boolean), [checked]);
@@ -482,7 +483,7 @@ export default function App() {
 
       <CategoryBar categories={categoryOptions} selected={category} onSelect={setCategory} />
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr,5fr] gap-4 p-4">
+      <div className={"max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr,5fr] gap-4 p-4"}>
         {/* Left sidebar: Calendar */}
         <aside className="hidden lg:block sticky top-[92px] self-start">
           <Calendar selected={selectedDate} onSelect={setSelectedDate} viewMonth={calendarMonth} onViewMonth={setCalendarMonth} counts={histo} />
@@ -638,7 +639,7 @@ export default function App() {
 
       <DetailsDrawer
         p={drawer}
-        onClose={()=>setDrawer(null)}
+        onClose={()=>{ setDrawer(null); }}
         onTagAdd={(t)=>drawer && tagAdd(drawer.id, t)}
         onTagRemove={(t)=>drawer && tagRemove(drawer.id, t)}
         onScore={(provider)=> drawer && scoreNow(drawer, provider)}
@@ -666,6 +667,8 @@ export default function App() {
             setError(e?.message || 'Failed to save note');
           } finally { setLoading(false); }
         }}
+        apiBase={API_BASE}
+        onOpenPdf={(arxivId)=> setPdfModal({ arxivId })}
       />
 
       {/* Shortcut legend */}
@@ -676,6 +679,31 @@ export default function App() {
         <div>s shortlist · a archive · r score · t suggest</div>
         <div>h prev page · l next page</div>
       </div>
+
+      {/* PDF modal (popup, not full-screen) */}
+      {pdfModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={()=> setPdfModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl border w-[96vw] h-[90vh] md:w-[88vw] lg:w-[75vw] relative overflow-hidden" onClick={(e)=>e.stopPropagation()}>
+            <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+              <a
+                href={`${API_BASE}/v1/papers/by_arxiv/${pdfModal.arxivId}/pdf`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl border px-3 py-1.5 bg-white hover:bg-gray-50"
+              >Open ↗</a>
+              <button
+                className="rounded-xl border px-3 py-1.5 bg-white hover:bg-gray-50"
+                onClick={()=> setPdfModal(null)}
+              >Close</button>
+            </div>
+            <iframe
+              title="PDF preview"
+              src={`${API_BASE}/v1/papers/by_arxiv/${pdfModal.arxivId}/pdf`}
+              className="w-full h-full"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

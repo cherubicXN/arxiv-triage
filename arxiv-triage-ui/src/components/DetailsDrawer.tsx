@@ -28,9 +28,11 @@ type Props = {
   onSuggest:(provider?: string)=>void;
   onRubricSave:(rb: Rubric)=>void;
   onNoteSave:(text: string)=>void;
+  apiBase: string;
+  onOpenPdf?: (arxivId: string)=>void;
 };
 
-export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onScore, onSuggest, onRubricSave, onNoteSave }: Props){
+export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onScore, onSuggest, onRubricSave, onNoteSave, apiBase, onOpenPdf }: Props){
   if (!p) return null;
   const tags = p.tags?.list || [];
   const rb = (p.signals?.rubric || { novelty:3, evidence:3, clarity:3, reusability:2, fit:3, total:14 }) as Rubric;
@@ -43,9 +45,10 @@ export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onSco
   };
   const [note, setNote] = React.useState<string>(String((p.extra as any)?.note || ""));
   React.useEffect(()=>{ setNote(String((p.extra as any)?.note || "")); }, [p?.id]);
+  const [showPdf, setShowPdf] = React.useState<boolean>(false);
   const suggested: string[] = (p.signals?.suggested_tags || []) as any;
   return (
-    <aside className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-white border-l shadow-xl z-30 flex flex-col">
+    <aside className={`fixed inset-y-0 right-0 w-full ${showPdf? 'sm:w-[75vw]' : 'sm:w-[520px]'} bg-white border-l shadow-xl z-30 flex flex-col`}>
       <div className="p-3 border-b flex items-center justify-between">
         <div className="text-sm text-gray-500 truncate">{p.authors}</div>
         <button onClick={onClose} className="rounded-lg border px-2 py-1">Esc</button>
@@ -61,7 +64,12 @@ export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onSco
           <a className="text-blue-600 hover:underline" href={p.links_abs} target="_blank" rel="noreferrer">abs ↗</a>
           <a className="text-blue-600 hover:underline" href={p.links_pdf} target="_blank" rel="noreferrer">pdf ↗</a>
           <a className="text-blue-600 hover:underline" href={p.links_html} target="_blank" rel="noreferrer">html ↗</a>
+          <button
+            className="rounded-xl border px-2 py-1 hover:bg-gray-50"
+            onClick={()=> onOpenPdf?.(p.arxiv_id)}
+          >Preview PDF</button>
         </div>
+        {/* Inline preview removed in favor of full-screen modal */}
         <div className="mt-4">
           <div className="text-xs font-semibold text-gray-500 mb-1">Tags</div>
           <TagEditor

@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
 from typing import List, Optional
+from fastapi.responses import StreamingResponse
+import httpx
 from ..db import get_session
 from ..models import Paper, Action, PaperState
 from ..schemas import (
@@ -466,3 +468,36 @@ async def set_note_by_arxiv(arxiv_id: str, version: Optional[int] = Query(None),
     session.add(Action(paper_id=paper.id, action="note", payload={"len": len(note_text)}, actor="nan"))
     await session.commit()
     return {"ok": True, "data": {"arxiv_id": arxiv_id, "version": paper.version, "note": note_text}}
+
+@router.get("/papers/{paper_id}/pdf")
+async def get_pdf(paper_id: int, session: AsyncSession = Depends(get_session)):
+    res = await session.execute(select(Paper).where(Paper.id == paper_id))
+    paper = res.scalar_one_or_none()
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    url = paper.links_pdf or (f"https://arxiv.org/pdf/{paper.arxiv_id}.pdf" if paper.arxiv_id else None)
+    if not url:
+        raise HTTPException(404, "pdf url not available")
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            upstream = await client.get(url)
+            upstream.raise_for_status()
+            headers = {"Content-Type": "application/pdf", "Cache-Control": "public, max-age=86400"}
+            return StreamingResponse(iter([upstream.content]), media_type="application/pdf", headers=headers)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"failed to fetch pdf: {e}")
+
+@router.get("/papers/by_arxiv/{arxiv_id}/pdf")
+async def get_pdf_by_arxiv(arxiv_id: str, version: Optional[int] = Query(None), session: AsyncSession = Depends(get_session)):
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    url = paper.links_pdf or f"https://arxiv.org/pdf/{paper.arxiv_id}.pdf"
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            upstream = await client.get(url)
+            upstream.raise_for_status()
+            headers = {"Content-Type": "application/pdf", "Cache-Control": "public, max-age=86400"}
+            return StreamingResponse(iter([upstream.content]), media_type="application/pdf", headers=headers)
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"failed to fetch pdf: {e}")
