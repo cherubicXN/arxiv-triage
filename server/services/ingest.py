@@ -51,11 +51,15 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
     """
     Query arXiv Atom API for given categories within a recency window.
     """
-    # Build query
-    cat_query = "+OR+".join([f"cat:{c}" for c in cats])
+    # Build query (use spaces so httpx encodes them as '+').
+    # Parenthesize OR to be safe with precedence.
+    cat_query = " OR ".join([f"cat:{c}" for c in cats])
+    if len(cats) > 1:
+        cat_query = f"({cat_query})"
     params = {
         "search_query": cat_query,
-        "sortBy": "submittedDate",
+        # use lastUpdatedDate to capture revisions quickly
+        "sortBy": "lastUpdatedDate",
         "sortOrder": "descending",
         "start": 0,
         "max_results": max_results
@@ -94,8 +98,18 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
         except Exception:
             pub_dt = upd_dt = None
 
-        # window filter
-        if pub_dt and pub_dt.replace(tzinfo=timezone.utc) < cutoff:
+        def _to_utc(dt):
+            if not dt:
+                return None
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+
+        pub_dt_utc = _to_utc(pub_dt)
+        upd_dt_utc = _to_utc(upd_dt)
+
+        # window filter: include if either published or updated within window
+        if not ((pub_dt_utc and pub_dt_utc >= cutoff) or (upd_dt_utc and upd_dt_utc >= cutoff)):
             continue
 
         # categories
@@ -127,8 +141,8 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
             "authors": authors,
             "categories": ",".join(cats),
             "primary_category": primary_cat,
-            "submitted_at": pub_dt.isoformat() if pub_dt else None,
-            "updated_at": upd_dt.isoformat() if upd_dt else None,
+            "submitted_at": pub_dt_utc.isoformat() if pub_dt_utc else None,
+            "updated_at": upd_dt_utc.isoformat() if upd_dt_utc else None,
             "links_pdf": pdf_link,
             "links_abs": html_abs,
             "links_html": f"https://ar5iv.org/html/{arxiv_id}",
