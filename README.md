@@ -45,6 +45,11 @@ python -m cli.arx digest --open
 python -m cli.arx list --state triage --top 30 --query "line OR plane"
 python -m cli.arx keep <paper_id>
 python -m cli.arx meh <paper_id>
+
+# 7) Run the UI (Vite/React)
+cd arxiv-triage-ui
+npm install
+npm run dev   # opens http://localhost:5173
 ```
 
 ### Optional: Postgres via Docker
@@ -62,6 +67,24 @@ DATABASE_URL=postgresql+psycopg2://arx:arx@localhost:5432/arx uvicorn server.mai
   - Trigger scoring: `curl -X POST http://localhost:8787/v1/papers/123/score` (add `?provider=deepseek` to override per-call).
   - Falls back to a deterministic heuristic if keys or SDK are absent.
   - Calibration: control output strictness via `LLM_RUBRIC_SHRINK` (default 0.6) and `LLM_RUBRIC_BASELINE` (default 3). Scores are shrunk toward the baseline to avoid inflation.
+
+## Backend (FastAPI) Configuration
+- Env file: copy `.env.example` → `.env`. Key variables:
+  - `PORT` (default 8787), `DATABASE_URL` (empty uses SQLite),
+  - Ingestion: `ARXIV_CATEGORIES`, `ARXIV_WINDOW_DAYS`, `ARXIV_MAX_RESULTS`.
+  - LLM: `LLM_PROVIDER=openai|deepseek`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `LLM_MODEL`.
+  - Calibration: `LLM_RUBRIC_SHRINK`, `LLM_RUBRIC_BASELINE`.
+- Run locally: `uvicorn server.main:app --reload --port $PORT`
+- CORS is open for development; API root returns a small health JSON and `/docs` (Swagger UI).
+
+## UI (Fast app) Configuration
+- Dev server: `cd arxiv-triage-ui && npm install && npm run dev` (default http://localhost:5173)
+- Point UI → API (choose one):
+  - Query param: open `http://localhost:5173/?api=http://localhost:8787` (easy for LAN IPs).
+  - Vite env: create `arxiv-triage-ui/.env` with `VITE_ARX_API=http://localhost:8787` and restart dev server.
+- Tips:
+  - If UI cannot reach the API, see the top-right API status pill; click it to open `/docs`.
+  - Keyboard shortcuts: j/k move, o open, x select, s shortlist, a archive, r score, t suggest, h/l page, / focus search, Esc close.
 
 #### Batch scoring
 - Endpoint: `POST /v1/papers/score-batch`
