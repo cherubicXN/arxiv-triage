@@ -117,6 +117,16 @@ async function suggestTagsAPI(paperId: number, provider?: string): Promise<{ ok:
   return r.json();
 }
 
+async function setRubricAPI(paperId: number, rubric: Rubric): Promise<{ ok: boolean; data: { paper_id: number; rubric: Rubric } }>{
+  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/rubric`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rubric),
+  });
+  if (!r.ok) throw new Error(`rubric: ${r.status}`);
+  return r.json();
+}
+
 export default function App() {
   // Show a small connectivity banner so misconfig is obvious
   const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "fail">("checking");
@@ -150,6 +160,7 @@ export default function App() {
   const [isBatchDragOver, setIsBatchDragOver] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | "">("");
   const [cursorId, setCursorId] = useState<number | null>(null);
+  const [autoOpenOnMove, setAutoOpenOnMove] = useState<boolean>(false);
   const [calendarMonth, setCalendarMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -287,6 +298,10 @@ export default function App() {
         setCursorId(id);
         const el = typeof document !== 'undefined' ? document.querySelector(`[data-paper-id="${id}"]`) : null;
         if (el && 'scrollIntoView' in el) { (el as any).scrollIntoView({ block: 'nearest' }); }
+        if (autoOpenOnMove) {
+          const p = visibleItems[clamped];
+          if (p) setDrawer(p);
+        }
       }
 
       if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); moveTo((currentIdx < 0 ? 0 : currentIdx + 1)); return; }
@@ -294,7 +309,7 @@ export default function App() {
 
       const currentId = cursorId ?? ids[0];
       if (!currentId) return;
-      if (e.key === 'o' || e.key === 'Enter') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) setDrawer(p); return; }
+      if (e.key === 'o' || e.key === 'Enter') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) { setDrawer(p); setAutoOpenOnMove(true); } return; }
       if (e.key === 's') { e.preventDefault(); mutate(currentId, 'shortlist'); return; }
       if (e.key === 'a') { e.preventDefault(); mutate(currentId, 'archived'); return; }
       if (e.key === 'x' || e.key === ' ') { e.preventDefault(); setChecked((m)=>({ ...m, [currentId]: !m[currentId] })); return; }
@@ -303,7 +318,7 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [visibleItems, cursorId]);
+  }, [visibleItems, cursorId, autoOpenOnMove]);
 
   // Derived
   const anyChecked = useMemo(()=> Object.values(checked).some(Boolean), [checked]);
@@ -423,7 +438,7 @@ export default function App() {
                 checked={!!checked[p.id]}
                 active={cursorId === p.id}
                 onToggle={()=>setChecked((m)=>({...m, [p.id]: !m[p.id]}))}
-                onOpen={()=>{ setCursorId(p.id); setDrawer(p); }}
+                onOpen={()=>{ setCursorId(p.id); setDrawer(p); setAutoOpenOnMove(true); }}
                 onShortlist={()=>mutate(p.id, "shortlist")}
                 onArchive={()=>mutate(p.id, "archived")}
                 onScore={()=>scoreNow(p.id)}
@@ -503,6 +518,18 @@ export default function App() {
         onTagRemove={(t)=>drawer && tagRemove(drawer.id, t)}
         onScore={(provider)=> drawer && scoreNow(drawer.id, provider)}
         onSuggest={(provider)=> drawer && suggestNow(drawer.id, provider)}
+        onRubricSave={async (rb)=>{
+          if (!drawer) return;
+          try {
+            setLoading(true);
+            const res = await setRubricAPI(drawer.id, rb);
+            const updated = res.data.rubric;
+            setItems((prev) => prev.map((p) => p.id === drawer.id ? { ...p, signals: { ...(p.signals||{}), rubric: updated } } : p));
+            setDrawer((d)=> d ? { ...d, signals: { ...(d.signals||{}), rubric: updated } } : d);
+          } catch (e: any) {
+            setError(e?.message || 'Failed to save rubric');
+          } finally { setLoading(false); }
+        }}
       />
 
       {/* Shortcut legend */}

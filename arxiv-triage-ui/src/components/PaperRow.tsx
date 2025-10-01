@@ -56,7 +56,12 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
   return (
     <div
       data-paper-id={p.id}
-      className={"group grid grid-cols-[24px_1fr_auto] gap-3 items-start px-3 py-3 border-b bg-white hover:bg-gray-50 relative cursor-pointer " + (isDragOver?"ring-2 ring-blue-300":"") + (active?" ring-1 ring-blue-300 bg-blue-50/30":"")}
+      className={
+        "group grid grid-cols-[24px_1fr_auto] gap-3 items-start px-3 py-3 border-b bg-white hover:bg-gray-50 relative cursor-pointer " +
+        (isDragOver ? " ring-2 ring-blue-300" : "") +
+        (checked ? " bg-amber-50 ring-1 ring-amber-300" : "") +
+        (active && !checked ? " bg-blue-100" : "")
+      }
       onDragOver={(e)=>{ e.preventDefault(); setIsDragOver(true); }}
       onDragLeave={()=>setIsDragOver(false)}
       onDrop={handleDrop}

@@ -13,6 +13,8 @@ from ..schemas import (
     BatchScoreReq,
     BatchScoreResp,
     PapersHistogram,
+    RubricSetReq,
+    RubricScores,
 )
 from ..services.scoring import search_bm25
 from ..services.llm import llm_rubric_score, llm_suggest_tags
@@ -132,6 +134,34 @@ async def suggest_tags(
     session.add(paper)
     await session.commit()
     return {"ok": True, "data": {"paper_id": paper_id, "suggested": suggestions}}
+
+@router.post("/papers/{paper_id}/rubric", response_model=dict)
+async def set_rubric(
+    paper_id: int,
+    body: RubricSetReq = Body(...),
+    session: AsyncSession = Depends(get_session),
+):
+    res = await session.execute(select(Paper).where(Paper.id == paper_id))
+    paper = res.scalar_one_or_none()
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    # sanitize values to 1..5
+    def clamp(x: int) -> int:
+        return max(1, min(5, int(x)))
+    scores = {
+        "novelty": clamp(body.novelty),
+        "evidence": clamp(body.evidence),
+        "clarity": clamp(body.clarity),
+        "reusability": clamp(body.reusability),
+        "fit": clamp(body.fit),
+    }
+    scores["total"] = int(body.total) if body.total is not None else sum(scores.values())
+    sig = dict(paper.signals or {})
+    sig["rubric"] = scores
+    paper.signals = sig
+    session.add(paper)
+    await session.commit()
+    return {"ok": True, "data": {"paper_id": paper_id, "rubric": scores}}
 
 @router.get("/papers/histogram_by_day", response_model=PapersHistogram)
 async def histogram_by_day(

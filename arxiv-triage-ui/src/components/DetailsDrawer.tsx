@@ -1,5 +1,5 @@
 import React from "react";
-import type { Paper } from "../types";
+import type { Paper, Rubric } from "../types";
 import { Pill } from "./ui";
 import { timeAgo } from "../utils";
 
@@ -26,12 +26,20 @@ type Props = {
   onTagRemove:(t:string)=>void;
   onScore:(provider?: string)=>void;
   onSuggest:(provider?: string)=>void;
+  onRubricSave:(rb: Rubric)=>void;
 };
 
-export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onScore, onSuggest }: Props){
+export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onScore, onSuggest, onRubricSave }: Props){
   if (!p) return null;
   const tags = p.tags?.list || [];
-  const rb = p.signals?.rubric as any;
+  const rb = (p.signals?.rubric || { novelty:3, evidence:3, clarity:3, reusability:2, fit:3, total:14 }) as Rubric;
+  const [r, setR] = React.useState<Rubric>(rb);
+  React.useEffect(()=>{ setR(rb); }, [p?.id]);
+  const recompute = (partial: Partial<Rubric>) => {
+    const next = { ...r, ...partial } as Rubric;
+    const total = (next.novelty|0) + (next.evidence|0) + (next.clarity|0) + (next.reusability|0) + (next.fit|0);
+    setR({ ...next, total });
+  };
   const suggested: string[] = (p.signals?.suggested_tags || []) as any;
   return (
     <aside className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-white border-l shadow-xl z-30 flex flex-col">
@@ -75,19 +83,21 @@ export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onSco
         </div>
         <div className="mt-4">
           <div className="text-xs font-semibold text-gray-500 mb-1">Scores</div>
-          {rb ? (
-            <div className="text-sm grid grid-cols-2 gap-2">
-              <div className="rounded-lg border p-2">Total <span className="font-semibold">{rb.total}</span></div>
-              <div className="rounded-lg border p-2">Novelty <span className="font-semibold">{rb.novelty}</span></div>
-              <div className="rounded-lg border p-2">Evidence <span className="font-semibold">{rb.evidence}</span></div>
-              <div className="rounded-lg border p-2">Clarity <span className="font-semibold">{rb.clarity}</span></div>
-              <div className="rounded-lg border p-2">Reusability <span className="font-semibold">{rb.reusability}</span></div>
-              <div className="rounded-lg border p-2">Fit <span className="font-semibold">{rb.fit}</span></div>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-600">No rubric yet.</div>
-          )}
-          <div className="mt-2 flex items-center gap-2">
+          <div className="text-sm grid grid-cols-2 gap-3 items-center">
+            <div className="rounded-lg border p-2 col-span-2">Total <span className="font-semibold">{r.total}</span></div>
+            <label className="text-xs text-gray-600">Novelty {r.novelty}</label>
+            <input type="range" min={1} max={5} value={r.novelty} onChange={(e)=>recompute({novelty: Number(e.target.value)})} />
+            <label className="text-xs text-gray-600">Evidence {r.evidence}</label>
+            <input type="range" min={1} max={5} value={r.evidence} onChange={(e)=>recompute({evidence: Number(e.target.value)})} />
+            <label className="text-xs text-gray-600">Clarity {r.clarity}</label>
+            <input type="range" min={1} max={5} value={r.clarity} onChange={(e)=>recompute({clarity: Number(e.target.value)})} />
+            <label className="text-xs text-gray-600">Reusability {r.reusability}</label>
+            <input type="range" min={1} max={5} value={r.reusability} onChange={(e)=>recompute({reusability: Number(e.target.value)})} />
+            <label className="text-xs text-gray-600">Fit {r.fit}</label>
+            <input type="range" min={1} max={5} value={r.fit} onChange={(e)=>recompute({fit: Number(e.target.value)})} />
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button onClick={()=>onRubricSave(r)} className="rounded-xl border px-3 py-1.5 hover:bg-gray-50">Save</button>
             <button onClick={()=>onScore(undefined)} className="rounded-xl border px-3 py-1.5 hover:bg-gray-50">Score</button>
             <button onClick={()=>onScore('deepseek')} className="rounded-xl border px-3 py-1.5 hover:bg-gray-50">Score (DeepSeek)</button>
           </div>

@@ -52,6 +52,22 @@ class PapersHistogram(BaseModel):
     ok: bool = True
     counts: Dict[str, int]
 
+class RubricScores(BaseModel):
+    novelty: int
+    evidence: int
+    clarity: int
+    reusability: int
+    fit: int
+    total: int
+
+class RubricSetReq(BaseModel):
+    novelty: int
+    evidence: int
+    clarity: int
+    reusability: int
+    fit: int
+    total: int | None = None
+
 class SetStateReq(BaseModel):
     state: str
 
