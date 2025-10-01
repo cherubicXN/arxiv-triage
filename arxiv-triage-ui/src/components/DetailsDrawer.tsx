@@ -27,9 +27,10 @@ type Props = {
   onScore:(provider?: string)=>void;
   onSuggest:(provider?: string)=>void;
   onRubricSave:(rb: Rubric)=>void;
+  onNoteSave:(text: string)=>void;
 };
 
-export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onScore, onSuggest, onRubricSave }: Props){
+export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onScore, onSuggest, onRubricSave, onNoteSave }: Props){
   if (!p) return null;
   const tags = p.tags?.list || [];
   const rb = (p.signals?.rubric || { novelty:3, evidence:3, clarity:3, reusability:2, fit:3, total:14 }) as Rubric;
@@ -40,6 +41,8 @@ export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onSco
     const total = (next.novelty|0) + (next.evidence|0) + (next.clarity|0) + (next.reusability|0) + (next.fit|0);
     setR({ ...next, total });
   };
+  const [note, setNote] = React.useState<string>(String((p.extra as any)?.note || ""));
+  React.useEffect(()=>{ setNote(String((p.extra as any)?.note || "")); }, [p?.id]);
   const suggested: string[] = (p.signals?.suggested_tags || []) as any;
   return (
     <aside className="fixed inset-y-0 right-0 w-full sm:w-[520px] bg-white border-l shadow-xl z-30 flex flex-col">
@@ -105,7 +108,15 @@ export default function DetailsDrawer({ p, onClose, onTagAdd, onTagRemove, onSco
 
         <div className="mt-6">
           <div className="text-xs font-semibold text-gray-500 mb-1">Notes</div>
-          <textarea className="w-full border rounded-xl p-2 text-sm" rows={4} placeholder="Your quick notes (persist later via API)…"/>
+          <textarea className="w-full border rounded-xl p-2 text-sm" rows={4}
+            placeholder="Your notes"
+            value={note}
+            onChange={(e)=>setNote(e.target.value)}
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button onClick={()=>onNoteSave(note)} className="rounded-xl border px-3 py-1.5 hover:bg-gray-50">Save note</button>
+            <div className="text-[11px] text-gray-500">{note.length} chars</div>
+          </div>
         </div>
       </div>
     </aside>

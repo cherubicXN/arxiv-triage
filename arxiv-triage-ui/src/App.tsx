@@ -63,8 +63,8 @@ async function fetchStats({ state, query }: { state?: string; query?: string; })
   return r.json();
 }
 
-async function setState(paperId: number, state: Paper["state"]) {
-  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/state`, {
+async function setStateByArxiv(arxivId: string, state: Paper["state"]) {
+  const r = await fetch(`${API_BASE}/v1/papers/by_arxiv/${arxivId}/state`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ state }),
@@ -73,8 +73,8 @@ async function setState(paperId: number, state: Paper["state"]) {
   return r.json();
 }
 
-async function addTags(paperId: number, tags: string[]) {
-  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/tags`, {
+async function addTagsByArxiv(arxivId: string, tags: string[]) {
+  const r = await fetch(`${API_BASE}/v1/papers/by_arxiv/${arxivId}/tags`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ add: tags }),
@@ -83,8 +83,8 @@ async function addTags(paperId: number, tags: string[]) {
   return r.json();
 }
 
-async function removeTags(paperId: number, tags: string[]) {
-  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/tags`, {
+async function removeTagsByArxiv(arxivId: string, tags: string[]) {
+  const r = await fetch(`${API_BASE}/v1/papers/by_arxiv/${arxivId}/tags`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ remove: tags }),
@@ -103,27 +103,37 @@ async function fetchHistogram({ state, query, month }: { state?: string; query?:
   return r.json();
 }
 
-async function scorePaperAPI(paperId: number, provider?: string): Promise<{ ok: boolean; data: { paper_id: number; rubric: Rubric } }>{
+async function scorePaperByArxivAPI(arxivId: string, provider?: string): Promise<{ ok: boolean; data: { arxiv_id: string; rubric: Rubric } }>{
   const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
-  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/score${qs}`, { method: "POST" });
+  const r = await fetch(`${API_BASE}/v1/papers/by_arxiv/${arxivId}/score${qs}`, { method: "POST" });
   if (!r.ok) throw new Error(`score: ${r.status}`);
   return r.json();
 }
 
-async function suggestTagsAPI(paperId: number, provider?: string): Promise<{ ok: boolean; data: { paper_id: number; suggested: string[] } }>{
+async function suggestTagsByArxivAPI(arxivId: string, provider?: string): Promise<{ ok: boolean; data: { arxiv_id: string; suggested: string[] } }>{
   const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
-  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/suggest-tags${qs}`, { method: "POST" });
+  const r = await fetch(`${API_BASE}/v1/papers/by_arxiv/${arxivId}/suggest-tags${qs}`, { method: "POST" });
   if (!r.ok) throw new Error(`suggest: ${r.status}`);
   return r.json();
 }
 
-async function setRubricAPI(paperId: number, rubric: Rubric): Promise<{ ok: boolean; data: { paper_id: number; rubric: Rubric } }>{
-  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/rubric`, {
+async function setRubricByArxivAPI(arxivId: string, rubric: Rubric): Promise<{ ok: boolean; data: { arxiv_id: string; rubric: Rubric } }>{
+  const r = await fetch(`${API_BASE}/v1/papers/by_arxiv/${arxivId}/rubric`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rubric),
   });
   if (!r.ok) throw new Error(`rubric: ${r.status}`);
+  return r.json();
+}
+
+async function setNoteByArxivAPI(arxivId: string, body: string): Promise<{ ok: boolean; data: { arxiv_id: string; note: string } }>{
+  const r = await fetch(`${API_BASE}/v1/papers/by_arxiv/${arxivId}/note`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!r.ok) throw new Error(`note: ${r.status}`);
   return r.json();
 }
 
@@ -146,7 +156,7 @@ export default function App() {
   const q = useDebounced(query, 250);
   const [stateFilter, setStateFilter] = useState<Paper["state"]|"">("triage");
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(40);
+  const [pageSize, setPageSize] = useState(40);
   const [items, setItems] = useState<Paper[]>([]);
   const [total, setTotal] = useState(0);
   const [stats, setStats] = useState<StatsResp | null>(null);
@@ -161,6 +171,8 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string | "">("");
   const [cursorId, setCursorId] = useState<number | null>(null);
   const [autoOpenOnMove, setAutoOpenOnMove] = useState<boolean>(false);
+  const [singleStatus, setSingleStatus] = useState<{ text: string; error?: boolean } | null>(null);
+  const [batchProg, setBatchProg] = useState<{ total: number; done: number; label: string } | null>(null);
   const [calendarMonth, setCalendarMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -180,7 +192,11 @@ export default function App() {
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { setPage(1); load(true); /* eslint-disable-next-line */ }, [q, stateFilter]);
+  useEffect(() => {
+    if (page !== 1) setPage(1);
+    else load(true);
+    /* eslint-disable-next-line */
+  }, [q, stateFilter]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -193,7 +209,7 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [q, stateFilter]);
-  useEffect(() => { if (page > 1) load(false); /* eslint-disable-next-line */ }, [page]);
+  useEffect(() => { load(true); /* eslint-disable-next-line */ }, [page]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -209,56 +225,70 @@ export default function App() {
 
   function refresh() { setPage(1); load(true); }
 
-  async function mutate(paperId: number, newState: Paper["state"]) {
-    await setState(paperId, newState);
-    setItems((prev) => prev.filter((p) => p.id !== paperId));
-    setChecked((m)=>{ const n={...m}; delete n[paperId]; return n; });
+  async function mutateByPaper(paper: Paper, newState: Paper["state"]) {
+    await setStateByArxiv(paper.arxiv_id, newState);
+    setItems((prev) => prev.filter((x) => x.id !== paper.id));
+    setChecked((m)=>{ const n={...m}; delete n[paper.id]; return n; });
   }
 
   async function tagAdd(paperId: number, t: string) {
     // Optimistic update first
     setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, tags: { list: Array.from(new Set([...(p.tags?.list || []), t])) } } : p));
+    setDrawer((d)=> d && d.id===paperId ? { ...d, tags: { list: Array.from(new Set([...(d.tags?.list || []), t])) } } : d);
     try {
-      await addTags(paperId, [t]);
+      const p = items.find(x=>x.id===paperId);
+      if (p) await addTagsByArxiv(p.arxiv_id, [t]);
     } catch (e: any) {
       // Revert on failure and surface error
       setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, tags: { list: (p.tags?.list || []).filter(x=>x!==t) } } : p));
+      setDrawer((d)=> d && d.id===paperId ? { ...d, tags: { list: (d.tags?.list || []).filter(x=>x!==t) } } : d);
       setError(e?.message || 'Failed to add tag');
     }
   }
   async function tagRemove(paperId: number, t: string) {
     // Optimistic remove
     setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, tags: { list: (p.tags?.list || []).filter(x=>x!==t) } } : p));
+    setDrawer((d)=> d && d.id===paperId ? { ...d, tags: { list: (d.tags?.list || []).filter(x=>x!==t) } } : d);
     try {
-      await removeTags(paperId, [t]);
+      const p = items.find(x=>x.id===paperId);
+      if (p) await removeTagsByArxiv(p.arxiv_id, [t]);
     } catch (e: any) {
       // Revert on failure and surface error
       setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, tags: { list: Array.from(new Set([...(p.tags?.list || []), t])) } } : p));
+      setDrawer((d)=> d && d.id===paperId ? { ...d, tags: { list: Array.from(new Set([...(d.tags?.list || []), t])) } } : d);
       setError(e?.message || 'Failed to remove tag');
     }
   }
 
-  async function scoreNow(paperId: number, provider?: string) {
+  async function scoreNow(paper: Paper, provider?: string) {
     try {
-      setLoading(true);
-      const res = await scorePaperAPI(paperId, provider);
-      setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, signals: { ...(p.signals||{}), rubric: res.data.rubric } } : p));
-      setDrawer((d)=> d && d.id===paperId ? { ...d, signals: { ...(d.signals||{}), rubric: res.data.rubric } } : d);
+      setSingleStatus({ text: 'Scoring…' });
+      const res = await scorePaperByArxivAPI(paper.arxiv_id, provider);
+      setItems((prev) => prev.map((x) => x.id === paper.id ? { ...x, signals: { ...(x.signals||{}), rubric: (res as any).data.rubric } } : x));
+      setDrawer((d)=> d && d.id===paper.id ? { ...d, signals: { ...(d.signals||{}), rubric: (res as any).data.rubric } } : d);
+      setSingleStatus({ text: 'Scored' });
+      setTimeout(()=> setSingleStatus(null), 1200);
     } catch (e: any) {
       setError(e?.message || 'Failed to score');
-    } finally { setLoading(false); }
+      setSingleStatus({ text: 'Score failed', error: true });
+      setTimeout(()=> setSingleStatus(null), 2000);
+    } finally { /* no global spinner */ }
   }
 
-  async function suggestNow(paperId: number, provider?: string) {
+  async function suggestNow(paper: Paper, provider?: string) {
     try {
-      setLoading(true);
-      const res = await suggestTagsAPI(paperId, provider);
-      const suggested = res.data.suggested || [];
-      setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, signals: { ...(p.signals||{}), suggested_tags: suggested } } : p));
-      setDrawer((d)=> d && d.id===paperId ? { ...d, signals: { ...(d.signals||{}), suggested_tags: suggested } } : d);
+      setSingleStatus({ text: 'Suggesting…' });
+      const res = await suggestTagsByArxivAPI(paper.arxiv_id, provider);
+      const suggested = (res as any).data.suggested || [];
+      setItems((prev) => prev.map((x) => x.id === paper.id ? { ...x, signals: { ...(x.signals||{}), suggested_tags: suggested } } : x));
+      setDrawer((d)=> d && d.id===paper.id ? { ...d, signals: { ...(d.signals||{}), suggested_tags: suggested } } : d);
+      setSingleStatus({ text: 'Suggested' });
+      setTimeout(()=> setSingleStatus(null), 1200);
     } catch (e: any) {
       setError(e?.message || 'Failed to suggest tags');
-    } finally { setLoading(false); }
+      setSingleStatus({ text: 'Suggest failed', error: true });
+      setTimeout(()=> setSingleStatus(null), 2000);
+    } finally { /* no global spinner */ }
   }
 
   // Visible list after client-side filters (category, tag, date)
@@ -306,19 +336,21 @@ export default function App() {
 
       if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); moveTo((currentIdx < 0 ? 0 : currentIdx + 1)); return; }
       if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); moveTo((currentIdx < 0 ? 0 : currentIdx - 1)); return; }
+      if (e.key === 'l') { e.preventDefault(); const maxPage = Math.max(1, Math.ceil(total / pageSize) || 1); if (page < maxPage) setPage(page + 1); return; }
+      if (e.key === 'h') { e.preventDefault(); if (page > 1) setPage(page - 1); return; }
 
       const currentId = cursorId ?? ids[0];
       if (!currentId) return;
       if (e.key === 'o' || e.key === 'Enter') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) { setDrawer(p); setAutoOpenOnMove(true); } return; }
-      if (e.key === 's') { e.preventDefault(); mutate(currentId, 'shortlist'); return; }
-      if (e.key === 'a') { e.preventDefault(); mutate(currentId, 'archived'); return; }
+      if (e.key === 's') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'shortlist'); return; }
+      if (e.key === 'a') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'archived'); return; }
       if (e.key === 'x' || e.key === ' ') { e.preventDefault(); setChecked((m)=>({ ...m, [currentId]: !m[currentId] })); return; }
-      if (e.key === 'l') { e.preventDefault(); scoreNow(currentId); return; }
-      if (e.key === 'g') { e.preventDefault(); suggestNow(currentId); return; }
+      if (e.key === 'r') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) scoreNow(p); return; }
+      if (e.key === 't') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) suggestNow(p); return; }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [visibleItems, cursorId, autoOpenOnMove]);
+  }, [visibleItems, cursorId, autoOpenOnMove, page, pageSize, total]);
 
   // Derived
   const anyChecked = useMemo(()=> Object.values(checked).some(Boolean), [checked]);
@@ -374,7 +406,40 @@ export default function App() {
       const t = prompt("Add tag to selected"); if (!t) return;
       await Promise.all(selectedIds.map(id => addTags(id, [t])));
       refresh();
-    }
+    },
+    score: async () => {
+      const targets = items.filter(p => selectedIds.includes(p.id));
+      if (!targets.length) return;
+      setBatchProg({ total: targets.length, done: 0, label: 'Scoring' });
+      let done = 0;
+      for (const p of targets) {
+        try {
+          const res = await scorePaperByArxivAPI(p.arxiv_id);
+          setItems((prev) => prev.map((x) => x.id === p.id ? { ...x, signals: { ...(x.signals||{}), rubric: (res as any).data.rubric } } : x));
+          setDrawer((d)=> d && d.id===p.id ? { ...d, signals: { ...(d.signals||{}), rubric: (res as any).data.rubric } } : d);
+        } catch {}
+        done += 1;
+        setBatchProg({ total: targets.length, done, label: 'Scoring' });
+      }
+      setTimeout(()=> setBatchProg(null), 600);
+    },
+    suggest: async () => {
+      const targets = items.filter(p => selectedIds.includes(p.id));
+      if (!targets.length) return;
+      setBatchProg({ total: targets.length, done: 0, label: 'Suggesting' });
+      let done = 0;
+      for (const p of targets) {
+        try {
+          const res = await suggestTagsByArxivAPI(p.arxiv_id);
+          const suggested = (res as any).data.suggested || [];
+          setItems((prev) => prev.map((x) => x.id === p.id ? { ...x, signals: { ...(x.signals||{}), suggested_tags: suggested } } : x));
+          setDrawer((d)=> d && d.id===p.id ? { ...d, signals: { ...(d.signals||{}), suggested_tags: suggested } } : d);
+        } catch {}
+        done += 1;
+        setBatchProg({ total: targets.length, done, label: 'Suggesting' });
+      }
+      setTimeout(()=> setBatchProg(null), 600);
+    },
   };
 
   return (
@@ -424,11 +489,34 @@ export default function App() {
         </aside>
         {/* List column */}
         <section className="rounded-2xl border bg-white overflow-hidden">
-          <div className="px-3 py-2 text-sm text-gray-600 border-b flex items-center justify-between">
-            <div>{visibleItems.length} / {total} results</div>
+          <div className="px-3 py-2 text-sm text-gray-600 border-b flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3">
+              <span>{visibleItems.length} / {total} results</span>
+              <span>· Page {page} of {Math.max(1, Math.ceil(total / pageSize) || 1)} · {pageSize} per page</span>
               <button className="text-xs underline" onClick={()=>setChecked(Object.fromEntries(visibleItems.map(p=>[p.id,true])))}>Select page</button>
               <button className="text-xs underline" onClick={()=>setChecked({})}>Clear</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-xl border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={loading || page <= 1}
+              >Prev</button>
+              <button
+                className="rounded-xl border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setPage((p) => Math.min(Math.max(1, Math.ceil(total / pageSize) || 1), p + 1))}
+                disabled={loading || page >= Math.max(1, Math.ceil(total / pageSize) || 1)}
+              >Next</button>
+              <select
+                className="ml-2 rounded-xl border px-2 py-1"
+                value={pageSize}
+                onChange={(e)=>{ const v = Number(e.target.value)||40; setPageSize(v); setPage(1); }}
+              >
+                <option value={20}>20</option>
+                <option value={40}>40</option>
+                <option value={80}>80</option>
+                <option value={120}>120</option>
+              </select>
             </div>
           </div>
           <div>
@@ -439,9 +527,9 @@ export default function App() {
                 active={cursorId === p.id}
                 onToggle={()=>setChecked((m)=>({...m, [p.id]: !m[p.id]}))}
                 onOpen={()=>{ setCursorId(p.id); setDrawer(p); setAutoOpenOnMove(true); }}
-                onShortlist={()=>mutate(p.id, "shortlist")}
-                onArchive={()=>mutate(p.id, "archived")}
-                onScore={()=>scoreNow(p.id)}
+                onShortlist={()=>mutateByPaper(p, "shortlist")}
+                onArchive={()=>mutateByPaper(p, "archived")}
+                onScore={()=>scoreNow(p)}
                 availableTags={paletteTags}
                 onAddTag={(t)=>tagAdd(p.id, t)}
                 onDropTag={(t, pid)=>{
@@ -450,15 +538,35 @@ export default function App() {
                   Promise.all(targets.map(id => tagAdd(id, tag)));
                 }}
                 onRemoveTag={(t)=>tagRemove(p.id, t)}
-                onSuggest={()=>suggestNow(p.id)}
+                onSuggest={()=>suggestNow(p)}
               />
             ))}
-            <div className="flex justify-center p-4 border-t bg-white">
-              {items.length < total && (
-                <button className="rounded-xl border px-4 py-2 bg-white hover:bg-gray-50" onClick={() => setPage((p) => p + 1)} disabled={loading}>
-                  {loading ? "Loading…" : "Load more"}
-                </button>
-              )}
+            <div className="flex items-center justify-between gap-3 p-4 border-t bg-white text-sm">
+              <div>
+                Page {page} of {Math.max(1, Math.ceil(total / pageSize) || 1)} · {pageSize} per page
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-xl border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={loading || page <= 1}
+                >Prev</button>
+                <button
+                  className="rounded-xl border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                  onClick={() => setPage((p) => Math.min(Math.max(1, Math.ceil(total / pageSize) || 1), p + 1))}
+                  disabled={loading || page >= Math.max(1, Math.ceil(total / pageSize) || 1)}
+                >Next</button>
+                <select
+                  className="ml-2 rounded-xl border px-2 py-1"
+                  value={pageSize}
+                  onChange={(e)=>{ const v = Number(e.target.value)||40; setPageSize(v); setPage(1); }}
+                >
+                  <option value={20}>20</option>
+                  <option value={40}>40</option>
+                  <option value={80}>80</option>
+                  <option value={120}>120</option>
+                </select>
+              </div>
             </div>
             {error && <div className="text-red-600 text-sm p-3">{error}</div>}
           </div>
@@ -493,6 +601,8 @@ export default function App() {
           <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.shortlist}>Shortlist</button>
           <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.archive}>Archive</button>
           <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.tag}>+ Tag</button>
+          <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.score}>Score</button>
+          <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.suggest}>Suggest</button>
           <div
             className={("rounded-xl border px-3 py-1 text-sm cursor-copy " + (isBatchDragOver ? "ring-2 ring-blue-300 bg-blue-50" : "hover:bg-gray-50"))}
             onDragOver={(e)=>{ e.preventDefault(); setIsBatchDragOver(true); }}
@@ -511,23 +621,49 @@ export default function App() {
         </div>
       )}
 
+      {/* Status / Progress (bottom-left) */}
+      <div className="fixed bottom-4 left-4 z-40 space-y-2">
+        {batchProg && (
+          <div className="w-64 rounded-xl border bg-white shadow-sm p-2">
+            <div className="text-xs text-gray-600 mb-1">{batchProg.label} {batchProg.done}/{batchProg.total}</div>
+            <div className="h-2 bg-gray-100 rounded">
+              <div className="h-2 bg-blue-500 rounded" style={{ width: `${Math.max(0, Math.min(100, (batchProg.done / Math.max(1, batchProg.total)) * 100))}%` }} />
+            </div>
+          </div>
+        )}
+        {!batchProg && singleStatus && (
+          <div className={"rounded-xl border px-3 py-1.5 text-xs shadow-sm " + (singleStatus.error ? "bg-red-50 border-red-200 text-red-700" : "bg-white border-gray-200 text-gray-700")}>{singleStatus.text}</div>
+        )}
+      </div>
+
       <DetailsDrawer
         p={drawer}
         onClose={()=>setDrawer(null)}
         onTagAdd={(t)=>drawer && tagAdd(drawer.id, t)}
         onTagRemove={(t)=>drawer && tagRemove(drawer.id, t)}
-        onScore={(provider)=> drawer && scoreNow(drawer.id, provider)}
-        onSuggest={(provider)=> drawer && suggestNow(drawer.id, provider)}
+        onScore={(provider)=> drawer && scoreNow(drawer, provider)}
+        onSuggest={(provider)=> drawer && suggestNow(drawer, provider)}
         onRubricSave={async (rb)=>{
           if (!drawer) return;
           try {
             setLoading(true);
-            const res = await setRubricAPI(drawer.id, rb);
+            const res = await setRubricByArxivAPI(drawer.arxiv_id, rb);
             const updated = res.data.rubric;
             setItems((prev) => prev.map((p) => p.id === drawer.id ? { ...p, signals: { ...(p.signals||{}), rubric: updated } } : p));
             setDrawer((d)=> d ? { ...d, signals: { ...(d.signals||{}), rubric: updated } } : d);
           } catch (e: any) {
             setError(e?.message || 'Failed to save rubric');
+          } finally { setLoading(false); }
+        }}
+        onNoteSave={async (text)=>{
+          if (!drawer) return;
+          try {
+            setLoading(true);
+            await setNoteByArxivAPI(drawer.arxiv_id, text);
+            setItems((prev) => prev.map((x) => x.id === drawer.id ? { ...x, extra: { ...(x.extra||{}), note: text } } : x));
+            setDrawer((d)=> d ? { ...d, extra: { ...(d.extra||{}), note: text } } : d);
+          } catch (e: any) {
+            setError(e?.message || 'Failed to save note');
           } finally { setLoading(false); }
         }}
       />
@@ -537,7 +673,8 @@ export default function App() {
         <div className="font-medium">Shortcuts</div>
         <div>/ search · Esc close drawer</div>
         <div>j/k move · o open · x select</div>
-        <div>s shortlist · a archive · l score · g suggest</div>
+        <div>s shortlist · a archive · r score · t suggest</div>
+        <div>h prev page · l next page</div>
       </div>
     </div>
   );

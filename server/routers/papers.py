@@ -15,11 +15,24 @@ from ..schemas import (
     PapersHistogram,
     RubricSetReq,
     RubricScores,
+    BatchSuggestReq,
+    BatchSuggestResp,
 )
 from ..services.scoring import search_bm25
 from ..services.llm import llm_rubric_score, llm_suggest_tags
 
 router = APIRouter(tags=["papers"])
+
+async def _get_paper_by_arxiv(session: AsyncSession, arxiv_id: str, version: Optional[int] = None) -> Optional[Paper]:
+    q = select(Paper).where(Paper.arxiv_id == arxiv_id)
+    if version is not None:
+        q = q.where(Paper.version == version)
+    else:
+        q = q.order_by(Paper.version.desc())
+    res = await session.execute(q)
+    if version is not None:
+        return res.scalar_one_or_none()
+    return res.scalars().first()
 
 @router.get("/papers", response_model=PapersResponse)
 async def list_papers(
@@ -117,6 +130,24 @@ async def score_paper(
     await session.commit()
     return {"ok": True, "data": {"paper_id": paper_id, "rubric": scores}}
 
+@router.post("/papers/by_arxiv/{arxiv_id}/score")
+async def score_paper_by_arxiv(
+    arxiv_id: str,
+    version: Optional[int] = Query(None),
+    provider: str | None = Query(None, description="LLM provider: openai|deepseek"),
+    session: AsyncSession = Depends(get_session),
+):
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    scores = llm_rubric_score(paper.title or "", paper.abstract or "", provider=provider)
+    sig = dict(paper.signals or {})
+    sig["rubric"] = scores
+    paper.signals = sig
+    session.add(paper)
+    await session.commit()
+    return {"ok": True, "data": {"arxiv_id": arxiv_id, "version": paper.version, "rubric": scores}}
+
 @router.post("/papers/{paper_id}/suggest-tags")
 async def suggest_tags(
     paper_id: int,
@@ -134,6 +165,24 @@ async def suggest_tags(
     session.add(paper)
     await session.commit()
     return {"ok": True, "data": {"paper_id": paper_id, "suggested": suggestions}}
+
+@router.post("/papers/by_arxiv/{arxiv_id}/suggest-tags")
+async def suggest_tags_by_arxiv(
+    arxiv_id: str,
+    version: Optional[int] = Query(None),
+    provider: str | None = Query(None, description="LLM provider: openai|deepseek"),
+    session: AsyncSession = Depends(get_session),
+):
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    suggestions = llm_suggest_tags(paper.title or "", paper.abstract or "", paper.categories or "", provider)
+    sig = dict(paper.signals or {})
+    sig["suggested_tags"] = suggestions
+    paper.signals = sig
+    session.add(paper)
+    await session.commit()
+    return {"ok": True, "data": {"arxiv_id": arxiv_id, "version": paper.version, "suggested": suggestions}}
 
 @router.post("/papers/{paper_id}/rubric", response_model=dict)
 async def set_rubric(
@@ -162,6 +211,33 @@ async def set_rubric(
     session.add(paper)
     await session.commit()
     return {"ok": True, "data": {"paper_id": paper_id, "rubric": scores}}
+
+@router.post("/papers/by_arxiv/{arxiv_id}/rubric", response_model=dict)
+async def set_rubric_by_arxiv(
+    arxiv_id: str,
+    version: Optional[int] = Query(None),
+    body: RubricSetReq = Body(...),
+    session: AsyncSession = Depends(get_session),
+):
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    def clamp(x: int) -> int:
+        return max(1, min(5, int(x)))
+    scores = {
+        "novelty": clamp(body.novelty),
+        "evidence": clamp(body.evidence),
+        "clarity": clamp(body.clarity),
+        "reusability": clamp(body.reusability),
+        "fit": clamp(body.fit),
+    }
+    scores["total"] = int(body.total) if body.total is not None else sum(scores.values())
+    sig = dict(paper.signals or {})
+    sig["rubric"] = scores
+    paper.signals = sig
+    session.add(paper)
+    await session.commit()
+    return {"ok": True, "data": {"arxiv_id": arxiv_id, "version": paper.version, "rubric": scores}}
 
 @router.get("/papers/histogram_by_day", response_model=PapersHistogram)
 async def histogram_by_day(
@@ -257,6 +333,51 @@ async def score_batch(body: BatchScoreReq = Body(...), session: AsyncSession = D
 
     return {"ok": True, "scored": scored, "failed": failed, "ids": ids}
 
+@router.post("/papers/suggest-tags-batch", response_model=BatchSuggestResp)
+async def suggest_tags_batch(body: BatchSuggestReq = Body(...), session: AsyncSession = Depends(get_session)):
+    import asyncio
+
+    # Build base query
+    stmt = select(Paper)
+    if body.state:
+        stmt = stmt.where(Paper.state == body.state)
+    stmt = stmt.order_by(Paper.arxiv_id.desc(), Paper.version.desc())
+    res = await session.execute(stmt)
+    rows = res.scalars().all()
+
+    # Optional query filter via BM25
+    if body.query:
+        docs = [(p.id, f"{p.title} {p.abstract}") for p in rows]
+        matched = set(search_bm25(docs, body.query))
+        rows = [p for p in rows if p.id in matched]
+
+    # Filter missing suggestions if requested
+    if body.only_missing:
+        rows = [p for p in rows if not ((p.signals or {}).get("suggested_tags"))]
+
+    # Limit
+    rows = rows[: max(0, int(body.limit))]
+
+    suggested, failed, ids = 0, 0, []
+    delay = max(0, int(body.delay_ms)) / 1000.0
+
+    for p in rows:
+        try:
+            tags = await asyncio.to_thread(llm_suggest_tags, p.title or "", p.abstract or "", p.categories or "", body.provider)
+            sig = dict(p.signals or {})
+            sig["suggested_tags"] = tags
+            p.signals = sig
+            session.add(p)
+            await session.commit()
+            suggested += 1
+            ids.append(p.id)
+        except Exception:
+            failed += 1
+        if delay:
+            await asyncio.sleep(delay)
+
+    return {"ok": True, "suggested": suggested, "failed": failed, "ids": ids}
+
 @router.post("/papers/{paper_id}/state")
 async def set_state(paper_id: int, body: SetStateReq, session: AsyncSession = Depends(get_session)):
     if body.state not in [s.value for s in PaperState]:
@@ -270,6 +391,19 @@ async def set_state(paper_id: int, body: SetStateReq, session: AsyncSession = De
     session.add(Action(paper_id=paper_id, action="set_state", payload={"state": body.state}, actor="nan"))
     await session.commit()
     return {"ok": True, "data": {"paper_id": paper_id, "state": body.state}}
+
+@router.post("/papers/by_arxiv/{arxiv_id}/state")
+async def set_state_by_arxiv(arxiv_id: str, version: Optional[int] = Query(None), body: SetStateReq = Body(...), session: AsyncSession = Depends(get_session)):
+    if body.state not in [s.value for s in PaperState]:
+        raise HTTPException(400, "invalid state")
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    paper.state = body.state
+    session.add(paper)
+    session.add(Action(paper_id=paper.id, action="set_state", payload={"state": body.state}, actor="nan"))
+    await session.commit()
+    return {"ok": True, "data": {"arxiv_id": arxiv_id, "version": paper.version, "state": body.state}}
 
 @router.post("/papers/{paper_id}/tags")
 async def tags(paper_id: int, body: TagsReq, session: AsyncSession = Depends(get_session)):
@@ -287,3 +421,48 @@ async def tags(paper_id: int, body: TagsReq, session: AsyncSession = Depends(get
     session.add(Action(paper_id=paper_id, action="tags", payload=paper.tags, actor="nan"))
     await session.commit()
     return {"ok": True, "data": {"paper_id": paper_id, "tags": paper.tags}}
+
+@router.post("/papers/by_arxiv/{arxiv_id}/tags")
+async def tags_by_arxiv(arxiv_id: str, version: Optional[int] = Query(None), body: TagsReq = Body(...), session: AsyncSession = Depends(get_session)):
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    tags = set((paper.tags or {}).get("list", []))
+    if body.add:
+        tags.update(body.add)
+    if body.remove:
+        tags.difference_update(body.remove)
+    paper.tags = {"list": sorted(tags)}
+    session.add(paper)
+    session.add(Action(paper_id=paper.id, action="tags", payload=paper.tags, actor="nan"))
+    await session.commit()
+    return {"ok": True, "data": {"arxiv_id": arxiv_id, "version": paper.version, "tags": paper.tags}}
+
+@router.post("/papers/{paper_id}/note")
+async def set_note(paper_id: int, body: dict = Body(...), session: AsyncSession = Depends(get_session)):
+    res = await session.execute(select(Paper).where(Paper.id == paper_id))
+    paper = res.scalar_one_or_none()
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    note_text = (body or {}).get("body", "")
+    ext = dict(paper.extra or {})
+    ext["note"] = note_text
+    paper.extra = ext
+    session.add(paper)
+    session.add(Action(paper_id=paper.id, action="note", payload={"len": len(note_text)}, actor="nan"))
+    await session.commit()
+    return {"ok": True, "data": {"paper_id": paper_id, "note": note_text}}
+
+@router.post("/papers/by_arxiv/{arxiv_id}/note")
+async def set_note_by_arxiv(arxiv_id: str, version: Optional[int] = Query(None), body: dict = Body(...), session: AsyncSession = Depends(get_session)):
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    note_text = (body or {}).get("body", "")
+    ext = dict(paper.extra or {})
+    ext["note"] = note_text
+    paper.extra = ext
+    session.add(paper)
+    session.add(Action(paper_id=paper.id, action="note", payload={"len": len(note_text)}, actor="nan"))
+    await session.commit()
+    return {"ok": True, "data": {"arxiv_id": arxiv_id, "version": paper.version, "note": note_text}}

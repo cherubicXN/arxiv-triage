@@ -52,6 +52,28 @@ def score_batch(
     r = requests.post(url, json=payload, timeout=600)
     typer.echo(r.json())
 
+@app.command("suggest-batch")
+def suggest_batch(
+    state: Optional[str] = typer.Option(None, help="Filter by state: triage|shortlist|archived|hidden"),
+    provider: Optional[str] = typer.Option(None, help="LLM provider: openai|deepseek (overrides env)"),
+    limit: int = typer.Option(20, min=1, help="Max papers to suggest for"),
+    only_missing: bool = typer.Option(True, help="Only papers missing suggested tags"),
+    query: Optional[str] = typer.Option(None, help="Optional BM25 query to narrow set"),
+    delay_ms: int = typer.Option(800, min=0, help="Delay between calls (ms) to avoid rate spikes"),
+):
+    """Batch suggest tags with LLM and persist to signals.suggested_tags."""
+    url = f"{API}/v1/papers/suggest-tags-batch"
+    payload = {
+        "state": state,
+        "provider": provider,
+        "limit": limit,
+        "only_missing": only_missing,
+        "query": query,
+        "delay_ms": delay_ms,
+    }
+    r = requests.post(url, json=payload, timeout=600)
+    typer.echo(r.json())
+
 @app.command("list")
 def list_cmd(state: Optional[str] = typer.Option(None, help="triage|shortlist|archived|hidden"),
              top: int = typer.Option(50, help="max to show"),

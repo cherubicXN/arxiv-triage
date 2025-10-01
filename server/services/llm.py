@@ -2,6 +2,31 @@ import os
 import json
 from typing import Dict, Any, Optional, Tuple, List
 
+def _clamp(x: int, lo=1, hi=5) -> int:
+    return max(lo, min(hi, int(x)))
+
+def _shrink_rubric(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Shrink rubric scores toward a baseline to reduce overestimation.
+    Controlled by env `LLM_RUBRIC_SHRINK` in [0..1] (default 0.6) and `LLM_RUBRIC_BASELINE` (default 3).
+    new = round(baseline + factor * (raw - baseline))
+    """
+    try:
+        factor = float(os.getenv("LLM_RUBRIC_SHRINK", "0.6"))
+    except Exception:
+        factor = 0.6
+    try:
+        baseline = int(os.getenv("LLM_RUBRIC_BASELINE", "3"))
+    except Exception:
+        baseline = 3
+    out = dict(data)
+    for k in ["novelty", "evidence", "clarity", "reusability", "fit"]:
+        raw = int(out.get(k, baseline) or baseline)
+        shrunk = round(baseline + factor * (raw - baseline))
+        out[k] = _clamp(shrunk)
+    out["total"] = out.get("total") or (out["novelty"] + out["evidence"] + out["clarity"] + out["reusability"] + out["fit"])
+    out["total"] = int(out["novelty"] + out["evidence"] + out["clarity"] + out["reusability"] + out["fit"])
+    return out
+
 def _heuristic_score(title: str, abstract: str) -> Dict[str, Any]:
     # very rough baseline so UI can show something without a key
     tl = len(title or "")
@@ -12,7 +37,7 @@ def _heuristic_score(title: str, abstract: str) -> Dict[str, Any]:
     reusability = 2 + (1 if any(k in (abstract or "").lower() for k in ["code", "dataset", "open-sourced"]) else 0)
     fit = 3
     total = novelty + clarity + evidence + reusability + fit
-    return {"novelty": novelty, "evidence": evidence, "clarity": clarity, "reusability": reusability, "fit": fit, "total": total}
+    return _shrink_rubric({"novelty": novelty, "evidence": evidence, "clarity": clarity, "reusability": reusability, "fit": fit, "total": total})
 
 def llm_rubric_score(title: str, abstract: str, provider: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -55,9 +80,10 @@ def llm_rubric_score(title: str, abstract: str, provider: Optional[str] = None) 
         client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
 
     system = (
-        "You are a strict evaluator. Return ONLY a compact JSON object with integer scores."
+        "You are a conservative paper reviewer. Return ONLY a compact JSON object with integer scores."
         " Rubric: novelty(1-5), evidence(1-5), clarity(1-5), reusability(1-5), fit(1-5)."
-        " Also include total (sum). Keep it under 200 chars."
+        " Guidance: 3 = average/common; 4 = strong and well-supported; 5 = exceptional and rare (<5%)."
+        " Be strict; avoid inflating scores. Also include total (sum). Keep it under 200 chars."
     )
     user = (
         f"Title: {title}\n\nAbstract: {abstract}\n\n"
@@ -71,7 +97,7 @@ def llm_rubric_score(title: str, abstract: str, provider: Optional[str] = None) 
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0.2,
+            temperature=0.0,
             max_tokens=120,
         )
         content = resp.choices[0].message.content if getattr(resp, "choices", None) else ""
@@ -83,7 +109,7 @@ def llm_rubric_score(title: str, abstract: str, provider: Optional[str] = None) 
         # coerce to ints
         for k in fields:
             data[k] = int(data.get(k, 0))
-        return data
+        return _shrink_rubric(data)
     except Exception:
         # fall back gracefully
         return _heuristic_score(title, abstract)

@@ -61,6 +61,7 @@ DATABASE_URL=postgresql+psycopg2://arx:arx@localhost:5432/arx uvicorn server.mai
   - DeepSeek: set `DEEPSEEK_API_KEY` and optionally `DEEPSEEK_BASE_URL=https://api.deepseek.com/v1`, `DEEPSEEK_MODEL=deepseek-chat`. You can also set `LLM_PROVIDER=deepseek` to make it the default.
   - Trigger scoring: `curl -X POST http://localhost:8787/v1/papers/123/score` (add `?provider=deepseek` to override per-call).
   - Falls back to a deterministic heuristic if keys or SDK are absent.
+  - Calibration: control output strictness via `LLM_RUBRIC_SHRINK` (default 0.6) and `LLM_RUBRIC_BASELINE` (default 3). Scores are shrunk toward the baseline to avoid inflation.
 
 #### Batch scoring
 - Endpoint: `POST /v1/papers/score-batch`
@@ -70,6 +71,16 @@ DATABASE_URL=postgresql+psycopg2://arx:arx@localhost:5432/arx uvicorn server.mai
 curl -X POST http://localhost:8787/v1/papers/score-batch \
   -H 'Content-Type: application/json' \
   -d '{"state":"triage","provider":"deepseek","limit":15,"only_missing":true,"delay_ms":900}'
+```
+
+#### Batch tag suggestions
+- Endpoint: `POST /v1/papers/suggest-tags-batch`
+- Body (JSON): `{ "state": "triage", "provider": "deepseek|openai", "limit": 20, "only_missing": true, "query": "optional bm25 query", "delay_ms": 800 }`
+- Example:
+```bash
+curl -X POST http://localhost:8787/v1/papers/suggest-tags-batch \
+  -H 'Content-Type: application/json' \
+  -d '{"state":"triage","provider":"deepseek","limit":20,"only_missing":true,"delay_ms":800}'
 ```
 
 #### Tag suggestions

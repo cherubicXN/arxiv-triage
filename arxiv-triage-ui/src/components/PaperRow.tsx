@@ -82,6 +82,11 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
               R {p.signals.rubric.total}
             </span>
           )}
+          {((p.extra as any)?.note || "").length > 0 && (
+            <span title="Has note" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs text-blue-700 border-blue-300 bg-blue-50">
+              📝
+            </span>
+          )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
           {(existing.length > 0) ? (

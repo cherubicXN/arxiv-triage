@@ -68,6 +68,20 @@ class RubricSetReq(BaseModel):
     fit: int
     total: int | None = None
 
+class BatchSuggestReq(BaseModel):
+    state: Optional[str] = None
+    provider: Optional[str] = None  # openai|deepseek
+    limit: int = 20
+    only_missing: bool = True
+    query: Optional[str] = None
+    delay_ms: int = 800
+
+class BatchSuggestResp(BaseModel):
+    ok: bool = True
+    suggested: int
+    failed: int
+    ids: List[int]
+
 class SetStateReq(BaseModel):
     state: str
 
