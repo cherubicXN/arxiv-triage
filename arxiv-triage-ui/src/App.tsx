@@ -3,7 +3,8 @@ import TopBar from "./components/TopBar";
 import PaperRow from "./components/PaperRow";
 import DetailsDrawer from "./components/DetailsDrawer";
 import CategoryBar from "./components/CategoryBar";
-import type { Paper, ListResp } from "./types";
+import Calendar from "./components/Calendar";
+import type { Paper, ListResp, StatsResp, Rubric, HistoResp } from "./types";
 // utils imported by components where needed
 
 /**
@@ -53,6 +54,15 @@ async function fetchPapers({ state, query, page, pageSize }: { state?: string; q
   return r.json();
 }
 
+async function fetchStats({ state, query }: { state?: string; query?: string; }): Promise<StatsResp> {
+  const params = new URLSearchParams();
+  if (state) params.set("state", state);
+  if (query) params.set("query", query);
+  const r = await fetch(`${API_BASE}/v1/papers/stats?${params.toString()}`);
+  if (!r.ok) throw new Error(`fetchStats: ${r.status}`);
+  return r.json();
+}
+
 async function setState(paperId: number, state: Paper["state"]) {
   const r = await fetch(`${API_BASE}/v1/papers/${paperId}/state`, {
     method: "POST",
@@ -83,6 +93,30 @@ async function removeTags(paperId: number, tags: string[]) {
   return r.json();
 }
 
+async function fetchHistogram({ state, query, month }: { state?: string; query?: string; month?: string; }): Promise<HistoResp> {
+  const params = new URLSearchParams();
+  if (state) params.set("state", state);
+  if (query) params.set("query", query);
+  if (month) params.set("month", month);
+  const r = await fetch(`${API_BASE}/v1/papers/histogram_by_day?${params.toString()}`);
+  if (!r.ok) throw new Error(`fetchHistogram: ${r.status}`);
+  return r.json();
+}
+
+async function scorePaperAPI(paperId: number, provider?: string): Promise<{ ok: boolean; data: { paper_id: number; rubric: Rubric } }>{
+  const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/score${qs}`, { method: "POST" });
+  if (!r.ok) throw new Error(`score: ${r.status}`);
+  return r.json();
+}
+
+async function suggestTagsAPI(paperId: number, provider?: string): Promise<{ ok: boolean; data: { paper_id: number; suggested: string[] } }>{
+  const qs = provider ? `?provider=${encodeURIComponent(provider)}` : "";
+  const r = await fetch(`${API_BASE}/v1/papers/${paperId}/suggest-tags${qs}`, { method: "POST" });
+  if (!r.ok) throw new Error(`suggest: ${r.status}`);
+  return r.json();
+}
+
 export default function App() {
   // Show a small connectivity banner so misconfig is obvious
   const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "fail">("checking");
@@ -105,6 +139,7 @@ export default function App() {
   const [pageSize] = useState(40);
   const [items, setItems] = useState<Paper[]>([]);
   const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<StatsResp | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<Paper|null>(null);
@@ -113,6 +148,14 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState<string | "">("");
   const [userTags, setUserTags] = useState<string[]>([]);
   const [isBatchDragOver, setIsBatchDragOver] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | "">("");
+  const [cursorId, setCursorId] = useState<number | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    
+  });
+  const [histo, setHisto] = useState<Record<string, number>>({});
 
   async function load(reset = false) {
     try {
@@ -127,7 +170,31 @@ export default function App() {
   }
 
   useEffect(() => { setPage(1); load(true); /* eslint-disable-next-line */ }, [q, stateFilter]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await fetchStats({ state: stateFilter || undefined, query: q || undefined });
+        if (!cancelled) setStats(s);
+      } catch (e: any) {
+        if (!cancelled) setStats(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [q, stateFilter]);
   useEffect(() => { if (page > 1) load(false); /* eslint-disable-next-line */ }, [page]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const h = await fetchHistogram({ state: stateFilter || undefined, query: q || undefined, month: calendarMonth });
+        if (!cancelled) setHisto(h.counts || {});
+      } catch (e) {
+        if (!cancelled) setHisto({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [q, stateFilter, calendarMonth]);
 
   function refresh() { setPage(1); load(true); }
 
@@ -160,62 +227,30 @@ export default function App() {
     }
   }
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
-      if (e.key === "/") { e.preventDefault(); const inp = document.querySelector<HTMLInputElement>("input"); inp?.focus(); return; }
-      if (e.key === "Escape") setDrawer(null);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  async function scoreNow(paperId: number, provider?: string) {
+    try {
+      setLoading(true);
+      const res = await scorePaperAPI(paperId, provider);
+      setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, signals: { ...(p.signals||{}), rubric: res.data.rubric } } : p));
+      setDrawer((d)=> d && d.id===paperId ? { ...d, signals: { ...(d.signals||{}), rubric: res.data.rubric } } : d);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to score');
+    } finally { setLoading(false); }
+  }
 
-  // Derived
-  const anyChecked = useMemo(()=> Object.values(checked).some(Boolean), [checked]);
-  const selectedIds = useMemo(()=> Object.keys(checked).filter(k=>checked[Number(k)]).map(Number), [checked]);
+  async function suggestNow(paperId: number, provider?: string) {
+    try {
+      setLoading(true);
+      const res = await suggestTagsAPI(paperId, provider);
+      const suggested = res.data.suggested || [];
+      setItems((prev) => prev.map((p) => p.id === paperId ? { ...p, signals: { ...(p.signals||{}), suggested_tags: suggested } } : p));
+      setDrawer((d)=> d && d.id===paperId ? { ...d, signals: { ...(d.signals||{}), suggested_tags: suggested } } : d);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to suggest tags');
+    } finally { setLoading(false); }
+  }
 
-  // Category clusters (brief)
-  const byCat = useMemo(() => {
-    const m = new Map<string, Paper[]>();
-    for (const p of items) {
-      const k = p.primary_category || "unknown";
-      m.set(k, [...(m.get(k) || []), p]);
-    }
-    return Array.from(m.entries());
-  }, [items]);
-
-  const categoryOptions = useMemo(() => {
-    // Build category list with counts from current items
-    return byCat
-      .map(([name, arr]) => ({ name, count: arr.length }))
-      .sort((a, b) => b.count - a.count);
-  }, [byCat]);
-
-  // Tag counts and palette (auto-remove tags with zero association)
-  const tagCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of items) {
-      for (const t of p.tags?.list || []) {
-        m.set(t, (m.get(t) || 0) + 1);
-      }
-    }
-    return m;
-  }, [items]);
-
-  // Cleanup user-only tags that are not associated with any paper
-  useEffect(() => {
-    setUserTags((prev) => prev.filter((t) => (tagCounts.get(t) || 0) > 0));
-  }, [tagCounts]);
-
-  const paletteTags = useMemo(() => {
-    const used = Array.from(tagCounts.keys());
-    return Array.from(new Set(["empty", ...used, ...userTags]));
-  }, [tagCounts, userTags]);
-
-  // Toggle tag filter (client-side)
-  const toggleFilter = (t: string) => setSelectedTag((prev) => prev === t ? "" : t);
-
+  // Visible list after client-side filters (category, tag, date)
   const visibleItems = useMemo(() => {
     let arr = items;
     if (category) arr = arr.filter((p) => (p.primary_category || "") === category);
@@ -226,8 +261,95 @@ export default function App() {
         arr = arr.filter((p) => (p.tags?.list || []).includes(selectedTag));
       }
     }
+    if (selectedDate) {
+      arr = arr.filter((p) =>
+        (p.submitted_at && p.submitted_at.startsWith(selectedDate)) ||
+        (p.updated_at && p.updated_at.startsWith(selectedDate))
+      );
+    }
     return arr;
-  }, [items, category, selectedTag]);
+  }, [items, category, selectedTag, selectedDate]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function onKey(e: any) {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
+      if (e.key === "/") { e.preventDefault(); const inp = document.querySelector<HTMLInputElement>("input"); inp?.focus(); return; }
+      if (e.key === "Escape") { setDrawer(null); return; }
+
+      const ids = (visibleItems || []).map(p=>p.id);
+      if (!ids.length) return;
+      const currentIdx = cursorId ? ids.indexOf(cursorId) : -1;
+
+      function moveTo(idx: number) {
+        const clamped = Math.max(0, Math.min(ids.length - 1, idx));
+        const id = ids[clamped];
+        setCursorId(id);
+        const el = typeof document !== 'undefined' ? document.querySelector(`[data-paper-id="${id}"]`) : null;
+        if (el && 'scrollIntoView' in el) { (el as any).scrollIntoView({ block: 'nearest' }); }
+      }
+
+      if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); moveTo((currentIdx < 0 ? 0 : currentIdx + 1)); return; }
+      if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); moveTo((currentIdx < 0 ? 0 : currentIdx - 1)); return; }
+
+      const currentId = cursorId ?? ids[0];
+      if (!currentId) return;
+      if (e.key === 'o' || e.key === 'Enter') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) setDrawer(p); return; }
+      if (e.key === 's') { e.preventDefault(); mutate(currentId, 'shortlist'); return; }
+      if (e.key === 'a') { e.preventDefault(); mutate(currentId, 'archived'); return; }
+      if (e.key === 'x' || e.key === ' ') { e.preventDefault(); setChecked((m)=>({ ...m, [currentId]: !m[currentId] })); return; }
+      if (e.key === 'l') { e.preventDefault(); scoreNow(currentId); return; }
+      if (e.key === 'g') { e.preventDefault(); suggestNow(currentId); return; }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visibleItems, cursorId]);
+
+  // Derived
+  const anyChecked = useMemo(()=> Object.values(checked).some(Boolean), [checked]);
+  const selectedIds = useMemo(()=> Object.keys(checked).filter(k=>checked[Number(k)]).map(Number), [checked]);
+
+  // Category clusters (brief)
+  const categoryOptions = useMemo(() => {
+    const entries = stats ? Object.entries(stats.categories) : [];
+    return entries
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [stats]);
+
+  // Tag counts and palette (auto-remove tags with zero association)
+  const tagCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    if (stats?.tags) {
+      for (const [t, c] of Object.entries(stats.tags)) m.set(t, c);
+    }
+    return m;
+  }, [stats]);
+
+  // Cleanup user-only tags that are not associated with any paper
+  useEffect(() => {
+    setUserTags((prev) => prev.filter((t) => (tagCounts.get(t) || 0) > 0));
+  }, [tagCounts]);
+
+  const paletteTags = useMemo(() => {
+    const used = Array.from(tagCounts.keys());
+    const hasEmpty = (stats?.empty_tag_count || 0) > 0;
+    return Array.from(new Set([...(hasEmpty ? ["empty"] : []), ...used, ...userTags]));
+  }, [tagCounts, userTags, stats]);
+
+  // Toggle tag filter (client-side)
+  const toggleFilter = (t: string) => setSelectedTag((prev) => prev === t ? "" : t);
+
+  
+
+  // Ensure cursor points to a visible item
+  useEffect(() => {
+    const ids = visibleItems.map(p=>p.id);
+    if (!ids.length) { setCursorId(null); return; }
+    if (!cursorId || !ids.includes(cursorId)) {
+      setCursorId(ids[0]);
+    }
+  }, [visibleItems]);
 
   // Batch ops
   const batch = {
@@ -280,7 +402,11 @@ export default function App() {
 
       <CategoryBar categories={categoryOptions} selected={category} onSelect={setCategory} />
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[5fr,1fr] gap-4 p-4">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr,5fr] gap-4 p-4">
+        {/* Left sidebar: Calendar */}
+        <aside className="hidden lg:block sticky top-[92px] self-start">
+          <Calendar selected={selectedDate} onSelect={setSelectedDate} viewMonth={calendarMonth} onViewMonth={setCalendarMonth} counts={histo} />
+        </aside>
         {/* List column */}
         <section className="rounded-2xl border bg-white overflow-hidden">
           <div className="px-3 py-2 text-sm text-gray-600 border-b flex items-center justify-between">
@@ -295,10 +421,12 @@ export default function App() {
               <PaperRow key={p.id}
                 p={p}
                 checked={!!checked[p.id]}
+                active={cursorId === p.id}
                 onToggle={()=>setChecked((m)=>({...m, [p.id]: !m[p.id]}))}
-                onOpen={()=>setDrawer(p)}
+                onOpen={()=>{ setCursorId(p.id); setDrawer(p); }}
                 onShortlist={()=>mutate(p.id, "shortlist")}
                 onArchive={()=>mutate(p.id, "archived")}
+                onScore={()=>scoreNow(p.id)}
                 availableTags={paletteTags}
                 onAddTag={(t)=>tagAdd(p.id, t)}
                 onDropTag={(t, pid)=>{
@@ -307,6 +435,7 @@ export default function App() {
                   Promise.all(targets.map(id => tagAdd(id, tag)));
                 }}
                 onRemoveTag={(t)=>tagRemove(p.id, t)}
+                onSuggest={()=>suggestNow(p.id)}
               />
             ))}
             <div className="flex justify-center p-4 border-t bg-white">
@@ -372,12 +501,16 @@ export default function App() {
         onClose={()=>setDrawer(null)}
         onTagAdd={(t)=>drawer && tagAdd(drawer.id, t)}
         onTagRemove={(t)=>drawer && tagRemove(drawer.id, t)}
+        onScore={(provider)=> drawer && scoreNow(drawer.id, provider)}
+        onSuggest={(provider)=> drawer && suggestNow(drawer.id, provider)}
       />
 
       {/* Shortcut legend */}
       <div className="fixed bottom-4 right-4 text-xs text-gray-600 bg-white/80 backdrop-blur rounded-xl border px-3 py-2 shadow-sm">
         <div className="font-medium">Shortcuts</div>
         <div>/ search · Esc close drawer</div>
+        <div>j/k move · o open · x select</div>
+        <div>s shortlist · a archive · l score · g suggest</div>
       </div>
     </div>
   );

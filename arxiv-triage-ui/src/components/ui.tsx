@@ -8,15 +8,14 @@ export function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function IconBtn({ title, onClick, children }: { title: string; onClick?: () => void; children: React.ReactNode }) {
+export function IconBtn({ title, onClick, children }: { title: string; onClick?: (e: React.MouseEvent) => void; children: React.ReactNode }) {
   return (
     <button
       title={title}
-      onClick={onClick}
+      onClick={(e)=>{ e.stopPropagation(); onClick?.(e); }}
       className="rounded-lg border px-2 py-1 hover:bg-gray-50 active:scale-[0.99]"
     >
       {children}
     </button>
   );
 }
-

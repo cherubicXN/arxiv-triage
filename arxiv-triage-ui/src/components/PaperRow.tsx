@@ -6,17 +6,20 @@ import { timeAgo } from "../utils";
 type Props = {
   p: Paper;
   checked: boolean;
+  active?: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onShortlist: () => void;
   onArchive: () => void;
+  onScore?: (provider?: string) => void;
   availableTags?: string[];
   onAddTag?: (t: string) => void;
   onDropTag?: (t: string, paperId: number) => void;
   onRemoveTag?: (t: string) => void;
+  onSuggest?: () => void;
 };
 
-export default function PaperRow({ p, checked, onToggle, onOpen, onShortlist, onArchive, availableTags = [], onAddTag, onDropTag, onRemoveTag }: Props) {
+export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onShortlist, onArchive, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagInput, setTagInput] = useState("");
@@ -52,12 +55,14 @@ export default function PaperRow({ p, checked, onToggle, onOpen, onShortlist, on
 
   return (
     <div
-      className={"group grid grid-cols-[24px_1fr_auto] gap-3 items-start px-3 py-3 border-b bg-white hover:bg-gray-50 relative " + (isDragOver?"ring-2 ring-blue-300":"")}
+      data-paper-id={p.id}
+      className={"group grid grid-cols-[24px_1fr_auto] gap-3 items-start px-3 py-3 border-b bg-white hover:bg-gray-50 relative cursor-pointer " + (isDragOver?"ring-2 ring-blue-300":"") + (active?" ring-1 ring-blue-300 bg-blue-50/30":"")}
       onDragOver={(e)=>{ e.preventDefault(); setIsDragOver(true); }}
       onDragLeave={()=>setIsDragOver(false)}
       onDrop={handleDrop}
+      onClick={onOpen}
     >
-      <input type="checkbox" checked={checked} onChange={onToggle} className="mt-1" />
+      <input type="checkbox" checked={checked} onChange={onToggle} onClick={(e)=>e.stopPropagation()} className="mt-1" />
       <div className="min-w-0">
         <div className="text-sm text-gray-500 truncate">{p.authors}</div>
         <button onClick={onOpen} className="text-left font-semibold leading-snug group-hover:underline">
@@ -67,11 +72,16 @@ export default function PaperRow({ p, checked, onToggle, onOpen, onShortlist, on
           <Pill>{p.primary_category}</Pill>
           {p.updated_at && <span>{timeAgo(p.updated_at)}</span>}
           <Pill>{p.arxiv_id}</Pill>
+          {p.signals?.rubric?.total !== undefined && (
+            <span title="Rubric total" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs text-purple-700 border-purple-300 bg-purple-50">
+              R {p.signals.rubric.total}
+            </span>
+          )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
           {(existing.length > 0) ? (
             existing.map(t => (
-              <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs text-gray-700 border-gray-300">
+              <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs text-green-700 border-green-300 bg-green-50">
                 #{t}
                 {onRemoveTag && (
                   <button
@@ -86,6 +96,16 @@ export default function PaperRow({ p, checked, onToggle, onOpen, onShortlist, on
             <span className="px-2 py-0.5 rounded-full border text-xs text-red-600 border-red-300 bg-red-50">empty</span>
           )}
         </div>
+        {p.signals?.suggested_tags && p.signals.suggested_tags.length > 0 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+            {p.signals.suggested_tags.map(t => (
+              <button key={t} onClick={(e)=>{ e.stopPropagation(); onAddTag?.(t); }}
+                className="px-2 py-0.5 rounded-full border text-xs text-sky-700 border-sky-300 bg-sky-50 border-dashed hover:bg-sky-100"
+                title="Click to add tag"
+              >#{t}</button>
+            ))}
+          </div>
+        )}
         {(p.abstract) && (
           <div className="mt-2 text-sm text-gray-800">
             {expanded ? p.abstract : (<>
@@ -102,10 +122,18 @@ export default function PaperRow({ p, checked, onToggle, onOpen, onShortlist, on
         )}
       </div>
       <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
-        <IconBtn title="Shortlist" onClick={onShortlist}>✔︎</IconBtn>
-        <IconBtn title="Archive" onClick={onArchive}>🗂</IconBtn>
-        <a title="Abs" href={p.links_abs} target="_blank" className="rounded-lg border px-2 py-1 hover:bg-gray-50">abs ↗</a>
-        <a title="PDF" href={p.links_pdf} target="_blank" className="rounded-lg border px-2 py-1 hover:bg-gray-50">PDF ↗</a>
+        <div className="grid grid-cols-2 gap-1">
+          <a title="Abs" href={p.links_abs} target="_blank" rel="noreferrer" onClick={(e)=>e.stopPropagation()} className="rounded-lg border px-2 py-1 text-xs text-center hover:bg-gray-50">abs ↗</a>
+          <a title="PDF" href={p.links_pdf} target="_blank" rel="noreferrer" onClick={(e)=>e.stopPropagation()} className="rounded-lg border px-2 py-1 text-xs text-center hover:bg-gray-50">pdf ↗</a>
+          {onScore && (
+            <button title="Score (LLM rubric)" onClick={(e)=>{ e.stopPropagation(); onScore(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">score</button>
+          )}
+          {onSuggest && (
+            <button title="Suggest tags (LLM)" onClick={(e)=>{ e.stopPropagation(); onSuggest(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">suggest</button>
+          )}
+          <button title="Select (shortlist)" onClick={(e)=>{ e.stopPropagation(); onShortlist(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">select</button>
+          <button title="Archive" onClick={(e)=>{ e.stopPropagation(); onArchive(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">archive</button>
+        </div>
       </div>
       {tagOpen && (
         <div ref={menuRef} className="absolute right-3 top-10 z-20 w-56 bg-white border rounded-xl shadow-lg p-2">

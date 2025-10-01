@@ -30,8 +30,13 @@ uvicorn server.main:app --reload --port 8787
 
 # 4) Ingest today's papers (default cats from .env or config.yaml)
 python -m cli.arx pull --days 1
+# or specify multiple categories:
+python -m cli.arx pull -c cs.CV -c cs.LG --days 1
 # Or via API:
 curl -X POST http://localhost:8787/v1/ingest/today
+
+# Batch-score papers (LLM rubric)
+python -m cli.arx score-batch --state triage --provider deepseek --limit 15 --delay_ms 900
 
 # 5) Open digest (HTML) for today
 python -m cli.arx digest --open
@@ -51,5 +56,26 @@ DATABASE_URL=postgresql+psycopg2://arx:arx@localhost:5432/arx uvicorn server.mai
 
 ### Notes
 - arXiv etiquette: throttle requests (we use 1 req/3s) and cache ETags. 
-- If `OPENAI_API_KEY` is set, the scorer will call model `gpt-5-pro` for a rubric score.
+- Optional LLM rubric scoring:
+  - OpenAI: set `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`, `LLM_MODEL=gpt-4o-mini`).
+  - DeepSeek: set `DEEPSEEK_API_KEY` and optionally `DEEPSEEK_BASE_URL=https://api.deepseek.com/v1`, `DEEPSEEK_MODEL=deepseek-chat`. You can also set `LLM_PROVIDER=deepseek` to make it the default.
+  - Trigger scoring: `curl -X POST http://localhost:8787/v1/papers/123/score` (add `?provider=deepseek` to override per-call).
+  - Falls back to a deterministic heuristic if keys or SDK are absent.
+
+#### Batch scoring
+- Endpoint: `POST /v1/papers/score-batch`
+- Body (JSON): `{ "state": "triage", "provider": "deepseek|openai", "limit": 20, "only_missing": true, "query": "optional bm25 query", "delay_ms": 800 }`
+- Example:
+```bash
+curl -X POST http://localhost:8787/v1/papers/score-batch \
+  -H 'Content-Type: application/json' \
+  -d '{"state":"triage","provider":"deepseek","limit":15,"only_missing":true,"delay_ms":900}'
+```
+
+#### Tag suggestions
+- Suggest tags for one paper and persist to signals:
+```bash
+curl -X POST 'http://localhost:8787/v1/papers/123/suggest-tags?provider=deepseek'
+```
+UI shows suggested tags below user tags; click to add.
 - This is a starter you can expand into the full hub-and-spoke architecture later.

@@ -27,6 +27,31 @@ class PapersResponse(BaseModel):
     data: List[PaperOut]
     total: int
 
+class PapersStats(BaseModel):
+    ok: bool = True
+    total: int
+    categories: Dict[str, int]
+    tags: Dict[str, int]
+    empty_tag_count: int
+
+class BatchScoreReq(BaseModel):
+    state: Optional[str] = None
+    provider: Optional[str] = None  # openai|deepseek
+    limit: int = 20
+    only_missing: bool = True
+    query: Optional[str] = None
+    delay_ms: int = 800
+
+class BatchScoreResp(BaseModel):
+    ok: bool = True
+    scored: int
+    failed: int
+    ids: List[int]
+
+class PapersHistogram(BaseModel):
+    ok: bool = True
+    counts: Dict[str, int]
+
 class SetStateReq(BaseModel):
     state: str
 
