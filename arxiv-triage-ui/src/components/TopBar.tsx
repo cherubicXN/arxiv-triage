@@ -21,10 +21,10 @@ export default function TopBar({ query, setQuery, state, setStateFilter, refresh
   const [newTag, setNewTag] = React.useState("");
   const tabs: { key: Paper["state"] | ""; label: string }[] = [
     { key: "", label: "All" },
-    { key: "further_read", label: "Further‑Read" },
-    { key: "must_read", label: "Must‑Read" },
     { key: "triage", label: "Triage" },
+    { key: "further_read", label: "Further‑Read" },
     { key: "archived", label: "Archived" },
+    { key: "must_read", label: "Must‑Read" },
   ];
   return (
     <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b">

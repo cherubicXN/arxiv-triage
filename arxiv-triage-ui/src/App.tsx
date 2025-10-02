@@ -741,7 +741,7 @@ export default function App() {
         <div className="font-medium">Shortcuts</div>
         <div>/ search · Esc close drawer</div>
         <div>j/k move · o open · x select</div>
-        <div>s shortlist · a archive · r score · t suggest</div>
+        <div>f further · s must · a archive · r score · t suggest</div>
         <div>h prev page · l next page</div>
       </div>
 
