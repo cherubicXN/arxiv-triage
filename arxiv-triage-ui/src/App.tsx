@@ -429,7 +429,8 @@ export default function App() {
 
   // Batch ops
   const batch = {
-    shortlist: async () => { await Promise.all(selectedIds.map(id => setState(id, "shortlist"))); refresh(); },
+    further: async () => { await Promise.all(selectedIds.map(id => setState(id, "further_read"))); refresh(); },
+    must: async () => { await Promise.all(selectedIds.map(id => setState(id, "must_read"))); refresh(); },
     archive: async () => { await Promise.all(selectedIds.map(id => setState(id, "archived"))); refresh(); },
     tag: async () => {
       const t = prompt("Add tag to selected"); if (!t) return;
@@ -592,7 +593,8 @@ export default function App() {
                 active={cursorId === p.id}
                 onToggle={()=>setChecked((m)=>({...m, [p.id]: !m[p.id]}))}
                 onOpen={()=>{ setCursorId(p.id); setDrawer(p); setAutoOpenOnMove(true); }}
-                onShortlist={()=>mutateByPaper(p, "shortlist")}
+                onFurther={()=>mutateByPaper(p, "further_read")}
+                onMust={()=>mutateByPaper(p, "must_read")}
                 onArchive={()=>mutateByPaper(p, "archived")}
                 onTriage={()=>mutateByPaper(p, "triage")}
                 onScore={()=>scoreNow(p)}
@@ -664,7 +666,8 @@ export default function App() {
       {anyChecked && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-white border shadow-xl rounded-2xl px-3 py-2 z-40 flex items-center gap-2">
           <div className="text-sm text-gray-600">{selectedIds.length} selected</div>
-          <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.shortlist}>Shortlist</button>
+          <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.further}>Further</button>
+          <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.must}>Must</button>
           <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.archive}>Archive</button>
           <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.tag}>+ Tag</button>
           <button className="rounded-xl border px-3 py-1 hover:bg-gray-50" onClick={batch.score}>Score</button>
