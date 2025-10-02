@@ -166,6 +166,24 @@ async def get_paper_by_arxiv_endpoint(
     item["announced_date"] = _announced_date(paper.submitted_at)
     return item
 
+@router.post("/admin/move_must_to_further")
+async def move_must_to_further(
+    include_legacy_shortlist: bool = Query(True, description="Also move legacy 'shortlist' items"),
+    session: AsyncSession = Depends(get_session),
+):
+    """
+    Bulk move papers from must_read (and optionally legacy shortlist) to further_read.
+    """
+    from sqlalchemy import update
+    cond = (Paper.state == "must_read")
+    if include_legacy_shortlist:
+        cond = or_(cond, Paper.state == "shortlist")
+    stmt = update(Paper).where(cond).values(state="further_read")
+    res = await session.execute(stmt)
+    await session.commit()
+    moved = res.rowcount if hasattr(res, 'rowcount') else None
+    return {"ok": True, "moved": moved}
+
 @router.get("/papers/stats", response_model=PapersStats)
 async def papers_stats(
     state: Optional[str] = Query(None),
