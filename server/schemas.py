@@ -97,3 +97,6 @@ class IngestReq(BaseModel):
     days: int = 1
     cats: Optional[List[str]] = None
     max_results: Optional[int] = None
+
+class IngestByIdReq(BaseModel):
+    arxiv_id: str

@@ -91,6 +91,7 @@ async def list_papers(
     category: Optional[str] = Query(None, description="Filter by primary_category (exact)"),
     tag: Optional[str] = Query(None, description="Filter by tag in tags.list; 'empty' for no tags"),
     announced_date: Optional[str] = Query(None, description="YYYY-MM-DD; derived from submitted_at per arXiv schedule (ET)"),
+    arxiv_id: Optional[str] = Query(None, description="Filter by exact arXiv id (e.g., 2509.26645)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_session)
@@ -124,6 +125,9 @@ async def list_papers(
     if announced_date:
         rows = [p for p in rows if _announced_date(p.submitted_at) == announced_date]
 
+    if arxiv_id:
+        rows = [p for p in rows if (p.arxiv_id or "") == arxiv_id]
+
     if query:
         # naive BM25 over title+abstract in-memory
         docs = [(p.id, f"{p.title} {p.abstract}") for p in rows]
@@ -142,10 +146,28 @@ async def list_papers(
         out.append(item)
     return {"ok": True, "data": out, "total": total}
 
+@router.get("/papers/by_arxiv/{arxiv_id}", response_model=PaperOut)
+async def get_paper_by_arxiv_endpoint(
+    arxiv_id: str,
+    version: Optional[int] = Query(None),
+    session: AsyncSession = Depends(get_session),
+):
+    paper = await _get_paper_by_arxiv(session, arxiv_id, version)
+    if not paper:
+        raise HTTPException(404, "paper not found")
+    item = PaperOut.model_validate(paper).model_dump()
+    item["announced_date"] = _announced_date(paper.submitted_at)
+    return item
+
 @router.get("/papers/stats", response_model=PapersStats)
 async def papers_stats(
     state: Optional[str] = Query(None),
     query: Optional[str] = Query(None),
+    has_note: Optional[bool] = Query(None, description="Filter papers that have a non-empty note in extra.note"),
+    category: Optional[str] = Query(None, description="Filter by primary_category (exact)"),
+    tag: Optional[str] = Query(None, description="Filter by tag in tags.list; 'empty' for no tags"),
+    announced_date: Optional[str] = Query(None, description="YYYY-MM-DD; derived from submitted_at per arXiv schedule (ET)"),
+    arxiv_id: Optional[str] = Query(None, description="Filter by exact arXiv id (e.g., 2509.26645)"),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -160,6 +182,31 @@ async def papers_stats(
     stmt = stmt.order_by(Paper.arxiv_id.desc(), Paper.version.desc())
     res = await session.execute(stmt)
     rows = res.scalars().all()
+
+    # Apply same optional filters as list endpoint (excluding pagination)
+    if has_note is not None:
+        def _has_note(p: Paper) -> bool:
+            try:
+                note = (p.extra or {}).get("note", "")
+                return bool(str(note).strip())
+            except Exception:
+                return False
+        rows = [p for p in rows if _has_note(p) == has_note]
+
+    if category:
+        rows = [p for p in rows if (p.primary_category or "") == category]
+
+    if tag:
+        if tag == "empty":
+            rows = [p for p in rows if not ((p.tags or {}).get("list") or [])]
+        else:
+            rows = [p for p in rows if tag in ((p.tags or {}).get("list") or [])]
+
+    if announced_date:
+        rows = [p for p in rows if _announced_date(p.submitted_at) == announced_date]
+
+    if arxiv_id:
+        rows = [p for p in rows if (p.arxiv_id or "") == arxiv_id]
 
     if query:
         docs = [(p.id, f"{p.title} {p.abstract}") for p in rows]

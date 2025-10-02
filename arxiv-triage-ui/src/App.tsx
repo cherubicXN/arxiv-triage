@@ -43,7 +43,7 @@ function useDebounced<T>(value: T, ms = 300) {
 }
 
 // ==== API ====
-async function fetchPapers({ state, query, hasNote, category, tag, announcedDate, page, pageSize }: { state?: string; query?: string; hasNote?: boolean; category?: string; tag?: string; announcedDate?: string; page: number; pageSize: number; }): Promise<ListResp> {
+async function fetchPapers({ state, query, hasNote, category, tag, announcedDate, arxivId, page, pageSize }: { state?: string; query?: string; hasNote?: boolean; category?: string; tag?: string; announcedDate?: string; arxivId?: string; page: number; pageSize: number; }): Promise<ListResp> {
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("page_size", String(pageSize));
@@ -53,15 +53,21 @@ async function fetchPapers({ state, query, hasNote, category, tag, announcedDate
   if (category) params.set("category", category);
   if (tag) params.set("tag", tag);
   if (announcedDate) params.set("announced_date", announcedDate);
+  if (arxivId) params.set("arxiv_id", arxivId);
   const r = await fetch(`${API_BASE}/v1/papers?${params.toString()}`);
   if (!r.ok) throw new Error(`fetchPapers: ${r.status}`);
   return r.json();
 }
 
-async function fetchStats({ state, query }: { state?: string; query?: string; }): Promise<StatsResp> {
+async function fetchStats({ state, query, hasNote, category, tag, announcedDate, arxivId }: { state?: string; query?: string; hasNote?: boolean; category?: string; tag?: string; announcedDate?: string; arxivId?: string; }): Promise<StatsResp> {
   const params = new URLSearchParams();
   if (state) params.set("state", state);
   if (query) params.set("query", query);
+  if (typeof hasNote === 'boolean') params.set("has_note", String(hasNote));
+  if (category) params.set("category", category);
+  if (tag) params.set("tag", tag);
+  if (announcedDate) params.set("announced_date", announcedDate);
+  if (arxivId) params.set("arxiv_id", arxivId);
   const r = await fetch(`${API_BASE}/v1/papers/stats?${params.toString()}`);
   if (!r.ok) throw new Error(`fetchStats: ${r.status}`);
   return r.json();
@@ -216,7 +222,10 @@ export default function App() {
   async function load(reset = false) {
     try {
       setLoading(true); setError(null);
-      const res = await fetchPapers({ state: stateFilter || undefined, query: q || undefined, hasNote: notesOnly || undefined, category: category || undefined, tag: selectedTag || undefined, announcedDate: selectedDate || undefined, page, pageSize });
+      // if query looks like arXiv id, pass it through arxiv_id filter for exact match
+      const idMatch = (q || '').match(/^\d{4}\.\d{4,5}(?:v\d+)?$/);
+      const arxivId = idMatch ? (q || '').replace(/v\d+$/, '') : undefined;
+      const res = await fetchPapers({ state: stateFilter || undefined, query: idMatch ? undefined : (q || undefined), hasNote: notesOnly || undefined, category: category || undefined, tag: selectedTag || undefined, announcedDate: selectedDate || undefined, arxivId, page, pageSize });
       setTotal(res.total);
       setItems(reset ? res.data : [...items, ...res.data]);
       if (reset) setChecked({});
@@ -234,14 +243,16 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const s = await fetchStats({ state: stateFilter || undefined, query: q || undefined });
+        const idMatch = (q || '').match(/^\d{4}\.\d{4,5}(?:v\d+)?$/);
+        const arxivId = idMatch ? (q || '').replace(/v\d+$/, '') : undefined;
+        const s = await fetchStats({ state: stateFilter || undefined, query: idMatch ? undefined : (q || undefined), hasNote: notesOnly || undefined, category: category || undefined, tag: selectedTag || undefined, announcedDate: selectedDate || undefined, arxivId });
         if (!cancelled) setStats(s);
       } catch (e: any) {
         if (!cancelled) setStats(null);
       }
     })();
     return () => { cancelled = true; };
-  }, [q, stateFilter]);
+  }, [q, stateFilter, notesOnly, category, selectedTag, selectedDate]);
   useEffect(() => { load(true); /* eslint-disable-next-line */ }, [page]);
   useEffect(() => {
     let cancelled = false;
@@ -376,18 +387,10 @@ export default function App() {
   // Category clusters (brief)
   const categoryOptions = useMemo(() => {
     const entries = stats ? Object.entries(stats.categories) : [];
-    if (!category) {
-      const visibleSet = new Set(visibleItems.map(p => (p.primary_category || "")));
-      return entries
-        .filter(([name]) => visibleSet.has(name))
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count);
-    }
-    // When a category is selected, keep showing all categories (counts from stats)
     return entries
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
-  }, [stats, visibleItems, category]);
+  }, [stats]);
 
   // Tag counts and palette (auto-remove tags with zero association)
   const tagCounts = useMemo(() => {
@@ -499,6 +502,22 @@ export default function App() {
         state={stateFilter}
         setStateFilter={setStateFilter}
         refresh={refresh}
+        fetchById={async (id) => {
+          try {
+            setSingleStatus({ text: 'Fetching by ID…' });
+            await ingestById(id);
+            // Set query to id (for exact match filter) and reload
+            setQuery(id);
+            setPage(1);
+            await load(true);
+            setSingleStatus({ text: 'Fetched' });
+            setTimeout(()=> setSingleStatus(null), 1000);
+          } catch (e: any) {
+            setError(e?.message || 'Failed to fetch by ID');
+            setSingleStatus({ text: 'Fetch failed', error: true });
+            setTimeout(()=> setSingleStatus(null), 1500);
+          }
+        }}
         quickFilters={paletteTags}
         toggleFilter={toggleFilter}
         selectedTag={selectedTag}
@@ -754,3 +773,12 @@ export default function App() {
 }
 
 // Email login flow removed per simplification
+async function ingestById(arxivId: string) {
+  const r = await fetch(`${API_BASE}/v1/ingest/by_id`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ arxiv_id: arxivId }),
+  });
+  if (!r.ok) throw new Error(`ingestById: ${r.status}`);
+  return r.json();
+}

@@ -8,6 +8,7 @@ type Props = {
   state: Paper["state"] | "";
   setStateFilter: (s: Paper["state"] | "") => void;
   refresh: () => void;
+  fetchById?: (id: string) => void;
   quickFilters: string[];
   toggleFilter: (f: string) => void;
   selectedTag?: string;
@@ -16,7 +17,7 @@ type Props = {
   setNotesOnly?: (v: boolean) => void;
 };
 
-export default function TopBar({ query, setQuery, state, setStateFilter, refresh, quickFilters, toggleFilter, selectedTag, onCreateTag, notesOnly=false, setNotesOnly }: Props) {
+export default function TopBar({ query, setQuery, state, setStateFilter, refresh, fetchById, quickFilters, toggleFilter, selectedTag, onCreateTag, notesOnly=false, setNotesOnly }: Props) {
   const [newTag, setNewTag] = React.useState("");
   const tabs: { key: Paper["state"] | ""; label: string }[] = [
     { key: "", label: "All" },
@@ -47,6 +48,14 @@ export default function TopBar({ query, setQuery, state, setStateFilter, refresh
           className="w-full max-w-xl rounded-2xl border px-3 py-2 focus:outline-none focus:ring"
         />
         <button onClick={refresh} className="rounded-xl border px-3 py-2 hover:bg-gray-50 ml-auto">Refresh</button>
+        <button
+          className="rounded-xl border px-3 py-2 hover:bg-gray-50"
+          onClick={() => {
+            const m = (query || '').match(/^\d{4}\.\d{4,5}(?:v\d+)?$/);
+            if (m) fetchById?.((query || '').replace(/v\d+$/, ''));
+          }}
+          title="Fetch paper by arXiv ID"
+        >Fetch ID</button>
       </div>
       <div className="max-w-7xl mx-auto px-4 pb-2 flex flex-wrap gap-2 items-center">
         <span className="text-xs text-gray-500 mr-1">Tags:</span>

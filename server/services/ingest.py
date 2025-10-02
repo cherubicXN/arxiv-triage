@@ -165,6 +165,83 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
         logger.debug(f"sample published/updated (utc): {head}")
     return results
 
+async def fetch_arxiv_by_ids(ids: List[str]) -> List[Dict[str, Any]]:
+    if not ids:
+        return []
+    params = {
+        "id_list": ",".join(ids)
+    }
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        logger.debug(f"arXiv request by id params: {params}")
+        resp = await client.get(ARXIV_BASE, params=params, headers={"User-Agent": "arxiv-news-agent/0.1 (github.com/you)"})
+        resp.raise_for_status()
+        text = resp.text
+    entries = text.split("<entry>")[1:]
+    out: List[Dict[str, Any]] = []
+    for e in entries:
+        def _get(tag):
+            m = re.search(rf"<{tag}[^>]*>(.*?)</{tag}>", e, re.DOTALL)
+            return (m.group(1).strip() if m else None)
+        arxiv_id_full = _get("id") or ""
+        m = re.search(r"/abs/(\d{4}\.\d{4,5})(v(\d+))?", arxiv_id_full)
+        if not m:
+            continue
+        arxiv_id = m.group(1)
+        version = int(m.group(3) or "1")
+        title = (_get("title") or "").replace("\n", " ").strip()
+        abstract = (_get("summary") or "").replace("\n", " ").strip()
+        published = _get("published")
+        updated = _get("updated")
+        try:
+            pub_dt = dtp.parse(published) if published else None
+            upd_dt = dtp.parse(updated) if updated else None
+        except Exception:
+            pub_dt = upd_dt = None
+        def _to_utc(dt):
+            if not dt:
+                return None
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        pub_dt_utc = _to_utc(pub_dt)
+        upd_dt_utc = _to_utc(upd_dt)
+        cats = re.findall(r'<category term="(.*?)"', e) or []
+        primary_cat = cats[0] if cats else "unknown"
+        authors = ", ".join(re.findall(r"<name>(.*?)</name>", e))
+        pdf_link = None
+        html_abs = None
+        for href, rel, _type in re.findall(r'<link href="(.*?)" rel="(.*?)"(?: type="(.*?)")?/?', e):
+            if rel == "alternate":
+                html_abs = href
+            if rel == "related" and (_type or "").endswith("pdf"):
+                pdf_link = href
+        if not pdf_link:
+            pdf_link = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        if not html_abs:
+            html_abs = f"https://arxiv.org/abs/{arxiv_id}"
+        out.append({
+            "arxiv_id": arxiv_id,
+            "version": version,
+            "title": title,
+            "abstract": abstract,
+            "authors": authors,
+            "categories": ",".join(cats),
+            "primary_category": primary_cat,
+            "submitted_at": pub_dt_utc.isoformat() if pub_dt_utc else None,
+            "updated_at": upd_dt_utc.isoformat() if upd_dt_utc else None,
+            "links_pdf": pdf_link,
+            "links_abs": html_abs,
+            "links_html": f"https://ar5iv.org/html/{arxiv_id}",
+            "extra": {}
+        })
+    logger.info(f"Fetched {len(out)} entries by id from arXiv")
+    return out
+
+async def ingest_by_id(session: AsyncSession, arxiv_id: str) -> int:
+    papers = await fetch_arxiv_by_ids([arxiv_id])
+    await upsert_papers(session, papers)
+    return len(papers)
+
 async def upsert_papers(session: AsyncSession, papers: List[Dict[str, Any]]):
     from ..models import Paper
     # naive upsert by (arxiv_id, version) → keep latest
