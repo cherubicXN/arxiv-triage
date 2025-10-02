@@ -22,13 +22,10 @@ type Props = {
 };
 
 export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onFurther, onMust, onArchive, onTriage, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest }: Props) {
-  const [expanded, setExpanded] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
-  const preview = useMemo(() => (p.abstract || "").slice(0, 320), [p.abstract]);
-  const showEllipsis = (p.abstract || "").length > preview.length;
   const existing = p.tags?.list || [];
   const suggestions = useMemo(() => availableTags.filter(t => t !== 'empty' && !existing.includes(t)), [availableTags, existing]);
 
@@ -86,7 +83,7 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
               R {p.signals.rubric.total}
             </span>
           )}
-          {((p.extra as any)?.note || "").length > 0 && (
+          {(((p.extra as any)?.note || (p.extra as any)?.notes || "").length > 0) && (
             <span title="Has note" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs text-blue-700 border-blue-300 bg-blue-50">
               📝
             </span>
@@ -120,20 +117,7 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
             ))}
           </div>
         )}
-        {(p.abstract) && (
-          <div className="mt-2 text-sm text-gray-800">
-            {expanded ? p.abstract : (<>
-              {preview}{showEllipsis && "…"}
-            </>)}
-            {showEllipsis && (
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="ml-2 text-xs text-blue-600 hover:underline align-baseline"
-                title={expanded ? "Show less" : "Show more"}
-              >{expanded ? "Less" : "More"}</button>
-            )}
-          </div>
-        )}
+        {/* abstract preview removed to keep list compact */}
       </div>
       <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
         <div className="grid grid-cols-2 gap-1">
