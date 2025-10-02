@@ -19,9 +19,10 @@ type Props = {
   onDropTag?: (t: string, paperId: number) => void;
   onRemoveTag?: (t: string) => void;
   onSuggest?: () => void;
+  onOpenPdf?: (arxivId: string) => void;
 };
 
-export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onFurther, onMust, onArchive, onTriage, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest }: Props) {
+export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onFurther, onMust, onArchive, onTriage, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest, onOpenPdf }: Props) {
   const [tagOpen, setTagOpen] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -136,6 +137,9 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
           <button title="Archive" onClick={(e)=>{ e.stopPropagation(); onArchive(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">archive</button>
           {onTriage && (
             <button title="Move to triage" onClick={(e)=>{ e.stopPropagation(); onTriage(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">triage</button>
+          )}
+          {onOpenPdf && (
+            <button title="Preview PDF" onClick={(e)=>{ e.stopPropagation(); onOpenPdf(p.arxiv_id); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">preview</button>
           )}
         </div>
       </div>

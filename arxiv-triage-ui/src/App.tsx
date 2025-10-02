@@ -185,6 +185,8 @@ export default function App() {
   const [singleStatus, setSingleStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const [batchProg, setBatchProg] = useState<{ total: number; done: number; label: string } | null>(null);
   const [pdfModal, setPdfModal] = useState<{ arxivId: string } | null>(null);
+  const pdfModalRef = React.useRef<HTMLDivElement | null>(null);
+  useEffect(() => { if (pdfModal) { pdfModalRef.current?.focus(); } }, [pdfModal]);
   const [calendarMonth, setCalendarMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -344,6 +346,13 @@ export default function App() {
       if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
       if (e.key === "/") { e.preventDefault(); const inp = document.querySelector<HTMLInputElement>("input"); inp?.focus(); return; }
       if (e.key === "Escape") { if (pdfModal) { setPdfModal(null); return; } setDrawer(null); return; }
+      // numeric hotkeys: states 1..5 and notes 0
+      if (e.key === '1') { e.preventDefault(); setStateFilter(''); setPage(1); return; }
+      if (e.key === '2') { e.preventDefault(); setStateFilter('triage'); setPage(1); return; }
+      if (e.key === '3') { e.preventDefault(); setStateFilter('further_read'); setPage(1); return; }
+      if (e.key === '4') { e.preventDefault(); setStateFilter('archived'); setPage(1); return; }
+      if (e.key === '5') { e.preventDefault(); setStateFilter('must_read'); setPage(1); return; }
+      if (e.key === '0') { e.preventDefault(); setNotesOnly(v=>!v); setPage(1); return; }
 
       const ids = (visibleItems || []).map(p=>p.id);
       if (!ids.length) return;
@@ -369,6 +378,7 @@ export default function App() {
       const currentId = cursorId ?? ids[0];
       if (!currentId) return;
       if (e.key === 'o' || e.key === 'Enter') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) { setDrawer(p); setAutoOpenOnMove(true); } return; }
+      if (e.key === 'p') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) { setPdfModal({ arxivId: p.arxiv_id }); } return; }
       if (e.key === 'n') { e.preventDefault(); setNotesOnly(v=>!v); setPage(1); return; }
       if (e.key === 'f') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'further_read'); return; }
       if (e.key === 's') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'must_read'); return; }
@@ -598,6 +608,7 @@ export default function App() {
                 onArchive={()=>mutateByPaper(p, "archived")}
                 onTriage={()=>mutateByPaper(p, "triage")}
                 onScore={()=>scoreNow(p)}
+                onOpenPdf={(arxivId)=> setPdfModal({ arxivId })}
                 availableTags={paletteTags}
                 onAddTag={(t)=>tagAdd(p.id, t)}
                 onDropTag={(t, pid)=>{
@@ -744,14 +755,14 @@ export default function App() {
         <div className="font-medium">Shortcuts</div>
         <div>/ search · Esc close drawer</div>
         <div>j/k move · o open · x select</div>
-        <div>f further · s must · a archive · r score · t suggest</div>
+        <div>f further · s must · a archive · r score · t suggest · p preview</div>
         <div>h prev page · l next page</div>
       </div>
 
       {/* PDF modal (popup, not full-screen) */}
       {pdfModal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={()=> setPdfModal(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl border w-[96vw] h-[90vh] md:w-[88vw] lg:w-[75vw] relative overflow-hidden" onClick={(e)=>e.stopPropagation()}>
+          <div ref={pdfModalRef} tabIndex={-1} className="bg-white rounded-2xl shadow-2xl border w-[96vw] h-[90vh] md:w-[88vw] lg:w-[75vw] relative overflow-hidden" onClick={(e)=>e.stopPropagation()}>
             <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
               <a
                 href={`${API_BASE}/v1/papers/by_arxiv/${pdfModal.arxivId}/pdf`}

@@ -20,11 +20,11 @@ type Props = {
 export default function TopBar({ query, setQuery, state, setStateFilter, refresh, fetchById, quickFilters, toggleFilter, selectedTag, onCreateTag, notesOnly=false, setNotesOnly }: Props) {
   const [newTag, setNewTag] = React.useState("");
   const tabs: { key: Paper["state"] | ""; label: string }[] = [
-    { key: "", label: "All" },
-    { key: "triage", label: "Triage" },
-    { key: "further_read", label: "Further‑Read" },
-    { key: "archived", label: "Archived" },
-    { key: "must_read", label: "Must‑Read" },
+    { key: "", label: "All#1" },
+    { key: "triage", label: "Triage#2" },
+    { key: "further_read", label: "Further‑Read#3" },
+    { key: "archived", label: "Archived#4" },
+    { key: "must_read", label: "Must‑Read#5" },
   ];
   return (
     <div className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b">
@@ -40,7 +40,7 @@ export default function TopBar({ query, setQuery, state, setStateFilter, refresh
             onClick={() => setNotesOnly?.(!notesOnly)}
             className={cls("px-3 py-1.5 rounded-xl border", notesOnly?"bg-gray-900 text-white border-gray-900":"bg-white hover:bg-gray-50")}
             title="Show only papers with notes"
-          >Notes</button>
+          >Notes#0</button>
         </div>
         <input
           value={query}
