@@ -43,12 +43,16 @@ function useDebounced<T>(value: T, ms = 300) {
 }
 
 // ==== API ====
-async function fetchPapers({ state, query, page, pageSize }: { state?: string; query?: string; page: number; pageSize: number; }): Promise<ListResp> {
+async function fetchPapers({ state, query, hasNote, category, tag, announcedDate, page, pageSize }: { state?: string; query?: string; hasNote?: boolean; category?: string; tag?: string; announcedDate?: string; page: number; pageSize: number; }): Promise<ListResp> {
   const params = new URLSearchParams();
   params.set("page", String(page));
   params.set("page_size", String(pageSize));
   if (state) params.set("state", state);
   if (query) params.set("query", query);
+  if (typeof hasNote === 'boolean') params.set("has_note", String(hasNote));
+  if (category) params.set("category", category);
+  if (tag) params.set("tag", tag);
+  if (announcedDate) params.set("announced_date", announcedDate);
   const r = await fetch(`${API_BASE}/v1/papers?${params.toString()}`);
   if (!r.ok) throw new Error(`fetchPapers: ${r.status}`);
   return r.json();
@@ -171,6 +175,7 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string | "">("");
   const [cursorId, setCursorId] = useState<number | null>(null);
   const [autoOpenOnMove, setAutoOpenOnMove] = useState<boolean>(false);
+  const [notesOnly, setNotesOnly] = useState<boolean>(false);
   const [singleStatus, setSingleStatus] = useState<{ text: string; error?: boolean } | null>(null);
   const [batchProg, setBatchProg] = useState<{ total: number; done: number; label: string } | null>(null);
   const [pdfModal, setPdfModal] = useState<{ arxivId: string } | null>(null);
@@ -181,10 +186,37 @@ export default function App() {
   });
   const [histo, setHisto] = useState<Record<string, number>>({});
 
+  async function ingestForDate(dateStr: string) {
+    try {
+      setSingleStatus({ text: 'Fetching from arXiv…' });
+      const target = new Date(dateStr);
+      const now = new Date();
+      const msPerDay = 24 * 60 * 60 * 1000;
+      const diffDays = Math.max(0, Math.ceil((now.getTime() - target.getTime()) / msPerDay));
+      const days = Math.max(1, diffDays + 2); // pad to ensure coverage
+      const body: any = { days, max_results: 1000 };
+      if (category) body.cats = [category];
+      const r = await fetch(`${API_BASE}/v1/ingest/today`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(`ingest: ${r.status}`);
+      const js = await r.json();
+      if (!js.ok) throw new Error(js?.error || 'ingest failed');
+      setSingleStatus({ text: 'Fetched' });
+      setTimeout(()=> setSingleStatus(null), 1000);
+    } catch (e: any) {
+      setSingleStatus({ text: 'Fetch failed', error: true });
+      setError(e?.message || 'Failed to fetch from arXiv');
+      setTimeout(()=> setSingleStatus(null), 1500);
+    }
+  }
+
   async function load(reset = false) {
     try {
       setLoading(true); setError(null);
-      const res = await fetchPapers({ state: stateFilter || undefined, query: q || undefined, page, pageSize });
+      const res = await fetchPapers({ state: stateFilter || undefined, query: q || undefined, hasNote: notesOnly || undefined, category: category || undefined, tag: selectedTag || undefined, announcedDate: selectedDate || undefined, page, pageSize });
       setTotal(res.total);
       setItems(reset ? res.data : [...items, ...res.data]);
       if (reset) setChecked({});
@@ -197,7 +229,7 @@ export default function App() {
     if (page !== 1) setPage(1);
     else load(true);
     /* eslint-disable-next-line */
-  }, [q, stateFilter]);
+  }, [q, stateFilter, notesOnly, pageSize, category, selectedTag, selectedDate]);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -292,25 +324,8 @@ export default function App() {
     } finally { /* no global spinner */ }
   }
 
-  // Visible list after client-side filters (category, tag, date)
-  const visibleItems = useMemo(() => {
-    let arr = items;
-    if (category) arr = arr.filter((p) => (p.primary_category || "") === category);
-    if (selectedTag) {
-      if (selectedTag === "empty") {
-        arr = arr.filter((p) => (p.tags?.list || []).length === 0);
-      } else {
-        arr = arr.filter((p) => (p.tags?.list || []).includes(selectedTag));
-      }
-    }
-    if (selectedDate) {
-      arr = arr.filter((p) =>
-        (p.submitted_at && p.submitted_at.startsWith(selectedDate)) ||
-        (p.updated_at && p.updated_at.startsWith(selectedDate))
-      );
-    }
-    return arr;
-  }, [items, category, selectedTag, selectedDate]);
+  // Server returns already-filtered items, so visibleItems is items.
+  const visibleItems = items;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -343,6 +358,7 @@ export default function App() {
       const currentId = cursorId ?? ids[0];
       if (!currentId) return;
       if (e.key === 'o' || e.key === 'Enter') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) { setDrawer(p); setAutoOpenOnMove(true); } return; }
+      if (e.key === 'n') { e.preventDefault(); setNotesOnly(v=>!v); setPage(1); return; }
       if (e.key === 's') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'shortlist'); return; }
       if (e.key === 'a') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'archived'); return; }
       if (e.key === 'x' || e.key === ' ') { e.preventDefault(); setChecked((m)=>({ ...m, [currentId]: !m[currentId] })); return; }
@@ -360,10 +376,18 @@ export default function App() {
   // Category clusters (brief)
   const categoryOptions = useMemo(() => {
     const entries = stats ? Object.entries(stats.categories) : [];
+    if (!category) {
+      const visibleSet = new Set(visibleItems.map(p => (p.primary_category || "")));
+      return entries
+        .filter(([name]) => visibleSet.has(name))
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+    }
+    // When a category is selected, keep showing all categories (counts from stats)
     return entries
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
-  }, [stats]);
+  }, [stats, visibleItems, category]);
 
   // Tag counts and palette (auto-remove tags with zero association)
   const tagCounts = useMemo(() => {
@@ -479,6 +503,8 @@ export default function App() {
         toggleFilter={toggleFilter}
         selectedTag={selectedTag}
         onCreateTag={(t)=>setUserTags((prev)=> prev.includes(t) ? prev : [...prev, t])}
+        notesOnly={notesOnly}
+        setNotesOnly={setNotesOnly}
       />
 
       <CategoryBar categories={categoryOptions} selected={category} onSelect={setCategory} />
@@ -486,7 +512,25 @@ export default function App() {
       <div className={"max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr,5fr] gap-4 p-4"}>
         {/* Left sidebar: Calendar */}
         <aside className="hidden lg:block sticky top-[92px] self-start">
-          <Calendar selected={selectedDate} onSelect={setSelectedDate} viewMonth={calendarMonth} onViewMonth={setCalendarMonth} counts={histo} />
+          <Calendar
+            selected={selectedDate}
+            onSelect={setSelectedDate}
+            onFetch={async (d)=>{
+              if (!d) { setSelectedDate(""); setPage(1); load(true); return; }
+              await ingestForDate(d);
+              setSelectedDate(prev => d);
+              setPage(1);
+              load(true);
+              // refresh histogram for visible month
+              try {
+                const h = await fetchHistogram({ state: stateFilter || undefined, query: q || undefined, month: calendarMonth });
+                setHisto(h.counts || {});
+              } catch {}
+            }}
+            viewMonth={calendarMonth}
+            onViewMonth={setCalendarMonth}
+            counts={histo}
+          />
         </aside>
         {/* List column */}
         <section className="rounded-2xl border bg-white overflow-hidden">
@@ -530,6 +574,7 @@ export default function App() {
                 onOpen={()=>{ setCursorId(p.id); setDrawer(p); setAutoOpenOnMove(true); }}
                 onShortlist={()=>mutateByPaper(p, "shortlist")}
                 onArchive={()=>mutateByPaper(p, "archived")}
+                onTriage={()=>mutateByPaper(p, "triage")}
                 onScore={()=>scoreNow(p)}
                 availableTags={paletteTags}
                 onAddTag={(t)=>tagAdd(p.id, t)}

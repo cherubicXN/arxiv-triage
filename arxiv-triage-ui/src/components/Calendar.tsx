@@ -6,6 +6,7 @@ type Props = {
   viewMonth: string; // YYYY-MM
   onViewMonth: (month: string) => void;
   counts?: Record<string, number>;
+  onFetch?: (date: string | "") => void; // optional: trigger fetch explicitly
 };
 
 function fmt(d: Date) {
@@ -15,7 +16,7 @@ function fmt(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-export default function Calendar({ selected, onSelect, viewMonth, onViewMonth, counts = {} }: Props) {
+export default function Calendar({ selected, onSelect, viewMonth, onViewMonth, counts = {}, onFetch }: Props) {
   const today = new Date();
   const [view, setView] = React.useState<Date>(() => {
     const [y,m] = viewMonth.split("-").map(Number);
@@ -112,6 +113,17 @@ export default function Calendar({ selected, onSelect, viewMonth, onViewMonth, c
       <div className="mt-2 flex items-center gap-2">
         <button
           className="rounded-xl border px-2 py-1 text-xs hover:bg-gray-50"
+          onClick={() => {
+            const base = selected ? new Date(selected) : today;
+            const prev = new Date(base.getFullYear(), base.getMonth(), base.getDate() - 1);
+            onFetch ? onFetch(fmt(prev)) : onSelect(fmt(prev));
+          }}
+          title="Previous day"
+        >
+          ◀ Day
+        </button>
+        <button
+          className="rounded-xl border px-2 py-1 text-xs hover:bg-gray-50"
           onClick={() => onSelect("")}
         >
           Clear
@@ -121,6 +133,25 @@ export default function Calendar({ selected, onSelect, viewMonth, onViewMonth, c
           onClick={() => onSelect(fmt(today))}
         >
           Today
+        </button>
+        <button
+          className="rounded-xl border px-2 py-1 text-xs hover:bg-gray-50"
+          onClick={() => {
+            const base = selected ? new Date(selected) : today;
+            const next = new Date(base.getFullYear(), base.getMonth(), base.getDate() + 1);
+            onFetch ? onFetch(fmt(next)) : onSelect(fmt(next));
+          }}
+          title="Next day"
+        >
+          Day ▶
+        </button>
+        <div className="ml-auto" />
+        <button
+          className="rounded-xl border px-2 py-1 text-xs hover:bg-gray-50"
+          onClick={() => onFetch ? onFetch(selected || fmt(today)) : onSelect(selected || fmt(today))}
+          title="Fetch papers for selected day"
+        >
+          Fetch
         </button>
       </div>
     </div>

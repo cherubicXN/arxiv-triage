@@ -22,6 +22,53 @@ from ..schemas import (
 )
 from ..services.scoring import search_bm25
 from ..services.llm import llm_rubric_score, llm_suggest_tags
+from dateutil import tz, parser as dtp
+
+ET = tz.gettz("America/New_York")
+
+def _announced_date(submitted_iso: Optional[str]) -> Optional[str]:
+    if not submitted_iso:
+        return None
+    try:
+        dt = dtp.parse(submitted_iso)
+        if not dt.tzinfo:
+            from datetime import timezone
+            dt = dt.replace(tzinfo=timezone.utc)
+        from datetime import timedelta, time
+        dt_et = dt.astimezone(ET)
+        wd = dt_et.weekday()  # Mon=0..Sun=6
+        cutoff = time(14, 0)
+
+        def next_weekday(base, target_wd):
+            delta = (target_wd - base.weekday()) % 7
+            return (base + timedelta(days=delta)).date()
+
+        t = dt_et.timetz()
+
+        if wd == 0:  # Monday
+            return (dt_et.date() if t < cutoff else (dt_et + timedelta(days=1)).date()).isoformat()
+        if wd == 1:  # Tuesday
+            return (dt_et.date() if t < cutoff else (dt_et + timedelta(days=1)).date()).isoformat()
+        if wd == 2:  # Wednesday
+            return (dt_et.date() if t < cutoff else (dt_et + timedelta(days=1)).date()).isoformat()
+        if wd == 3:  # Thursday
+            if t < cutoff:
+                return dt_et.date().isoformat()
+            # Thu >=14:00 → announce Sunday (20:00)
+            return next_weekday(dt_et, 6).isoformat()  # Sunday
+        if wd == 4:  # Friday
+            if t < cutoff:
+                # Fri <14:00 belongs to Thu→Fri window → Sunday announce
+                return next_weekday(dt_et, 6).isoformat()
+            # Fri >=14:00 → Monday announce
+            return next_weekday(dt_et, 0).isoformat()
+        if wd == 5:  # Saturday → Monday announce
+            return next_weekday(dt_et, 0).isoformat()
+        if wd == 6:  # Sunday → Monday announce
+            return next_weekday(dt_et, 0).isoformat()
+        return None
+    except Exception:
+        return None
 
 router = APIRouter(tags=["papers"])
 
@@ -40,6 +87,10 @@ async def _get_paper_by_arxiv(session: AsyncSession, arxiv_id: str, version: Opt
 async def list_papers(
     state: Optional[str] = Query(None),
     query: Optional[str] = Query(None),
+    has_note: Optional[bool] = Query(None, description="Filter papers that have a non-empty note in extra.note"),
+    category: Optional[str] = Query(None, description="Filter by primary_category (exact)"),
+    tag: Optional[str] = Query(None, description="Filter by tag in tags.list; 'empty' for no tags"),
+    announced_date: Optional[str] = Query(None, description="YYYY-MM-DD; derived from submitted_at per arXiv schedule (ET)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     session: AsyncSession = Depends(get_session)
@@ -52,6 +103,27 @@ async def list_papers(
     res = await session.execute(stmt)
     rows = res.scalars().all()
 
+    if has_note is not None:
+        def _has_note(p: Paper) -> bool:
+            try:
+                note = (p.extra or {}).get("note", "")
+                return bool(str(note).strip())
+            except Exception:
+                return False
+        rows = [p for p in rows if _has_note(p) == has_note]
+
+    if category:
+        rows = [p for p in rows if (p.primary_category or "") == category]
+
+    if tag:
+        if tag == "empty":
+            rows = [p for p in rows if not ((p.tags or {}).get("list") or [])]
+        else:
+            rows = [p for p in rows if tag in ((p.tags or {}).get("list") or [])]
+
+    if announced_date:
+        rows = [p for p in rows if _announced_date(p.submitted_at) == announced_date]
+
     if query:
         # naive BM25 over title+abstract in-memory
         docs = [(p.id, f"{p.title} {p.abstract}") for p in rows]
@@ -63,7 +135,12 @@ async def list_papers(
     start = (page - 1) * page_size
     end = start + page_size
     rows = rows[start:end]
-    return {"ok": True, "data": [PaperOut.model_validate(r) for r in rows], "total": total}
+    out = []
+    for r in rows:
+        item = PaperOut.model_validate(r).model_dump()
+        item["announced_date"] = _announced_date(r.submitted_at)
+        out.append(item)
+    return {"ok": True, "data": out, "total": total}
 
 @router.get("/papers/stats", response_model=PapersStats)
 async def papers_stats(
@@ -263,15 +340,11 @@ async def histogram_by_day(
     from datetime import datetime, timezone, timedelta
     counts: dict[str, int] = {}
     if month:
-        # filter to year-month prefix
+        # filter to year-month prefix, using announced date derived from submitted_at
         for p in rows:
-            day = None
-            if p.submitted_at and p.submitted_at.startswith(month):
-                day = p.submitted_at[:10]
-            elif p.updated_at and p.updated_at.startswith(month):
-                day = p.updated_at[:10]
-            if day:
-                counts[day] = counts.get(day, 0) + 1
+            ad = _announced_date(p.submitted_at)
+            if ad and ad.startswith(month):
+                counts[ad] = counts.get(ad, 0) + 1
     else:
         # last 31 days window
         today = datetime.now(timezone.utc).date()
@@ -282,7 +355,8 @@ async def histogram_by_day(
             except Exception:
                 return None
         for p in rows:
-            d = _to_date(p.submitted_at) or _to_date(p.updated_at)
+            ad = _announced_date(p.submitted_at)
+            d = _to_date(ad)
             if d and d >= cutoff:
                 day = d.isoformat()
                 counts[day] = counts.get(day, 0) + 1

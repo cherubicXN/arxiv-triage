@@ -12,9 +12,11 @@ type Props = {
   toggleFilter: (f: string) => void;
   selectedTag?: string;
   onCreateTag?: (t: string) => void;
+  notesOnly?: boolean;
+  setNotesOnly?: (v: boolean) => void;
 };
 
-export default function TopBar({ query, setQuery, state, setStateFilter, refresh, quickFilters, toggleFilter, selectedTag, onCreateTag }: Props) {
+export default function TopBar({ query, setQuery, state, setStateFilter, refresh, quickFilters, toggleFilter, selectedTag, onCreateTag, notesOnly=false, setNotesOnly }: Props) {
   const [newTag, setNewTag] = React.useState("");
   const tabs: { key: Paper["state"] | ""; label: string }[] = [
     { key: "", label: "All" },
@@ -32,6 +34,11 @@ export default function TopBar({ query, setQuery, state, setStateFilter, refresh
               className={cls("px-3 py-1.5 rounded-xl border", state===t.key?"bg-gray-900 text-white border-gray-900":"bg-white hover:bg-gray-50")}
             >{t.label}</button>
           ))}
+          <button
+            onClick={() => setNotesOnly?.(!notesOnly)}
+            className={cls("px-3 py-1.5 rounded-xl border", notesOnly?"bg-gray-900 text-white border-gray-900":"bg-white hover:bg-gray-50")}
+            title="Show only papers with notes"
+          >Notes</button>
         </div>
         <input
           value={query}

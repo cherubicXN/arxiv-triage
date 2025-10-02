@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import os
 from ..db import get_session
 from ..models import Paper, PaperState
 from ..services.ingest import parse_date_only
+from .papers import _announced_date
 
 router = APIRouter(tags=["digests"])
 
@@ -36,14 +37,25 @@ async def digest_daily(
     if date:
         d = parse_date_only(date)
     else:
-        d = datetime.now(timezone.utc).date()
+        # Default digest date in UTC+8 (configurable via DIGEST_TZ_OFFSET_HOURS)
+        try:
+            offset_hours = int(os.getenv("DIGEST_TZ_OFFSET_HOURS", "8"))
+        except ValueError:
+            offset_hours = 8
+        local_today = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=offset_hours))).date()
+        d = local_today
     d_str = d.isoformat()
 
-    # select papers submitted/updated on that date (approx: string prefix match)
+    # Select papers whose announced date matches the requested date.
+    # Uses the same ET-window policy as the papers API.
     stmt = select(Paper).order_by(Paper.id.desc())
     res = await session.execute(stmt)
     rows = res.scalars().all()
-    day_rows = [p for p in rows if (p.submitted_at and p.submitted_at.startswith(d_str)) or (p.updated_at and p.updated_at.startswith(d_str))]
+    day_rows = []
+    for p in rows:
+        ad = _announced_date(p.submitted_at)
+        if ad == d_str:
+            day_rows.append(p)
     top = pick_top(day_rows, top_k=top_k)
 
     if format == "json":

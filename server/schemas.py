@@ -19,6 +19,7 @@ class PaperOut(BaseModel):
     tags: Optional[Dict[str, Any]]
     signals: Optional[Dict[str, Any]]
     state: str
+    announced_date: Optional[str] = None
     class Config:
         from_attributes = True
 

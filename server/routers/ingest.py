@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from ..db import get_session
@@ -13,5 +13,9 @@ async def ingest_today_ep(payload: IngestReq = Body(...), session: AsyncSession 
     cats = payload.cats or _env_or_cfg_categories(cfg)
     days = payload.days or _env_or_cfg_window_days(cfg)
     max_results = payload.max_results or _env_or_cfg_max_results(cfg)
-    count = await ingest_today(session, cats=cats, days=days, max_results=max_results)
-    return {"ok": True, "data": {"fetched": count, "cats": cats, "days": days}}
+    try:
+        count = await ingest_today(session, cats=cats, days=days, max_results=max_results)
+    except Exception as e:
+        # Surface a readable error instead of generic 500s (e.g., network blocked)
+        raise HTTPException(status_code=502, detail=f"ingest failed: {e}")
+    return {"ok": True, "data": {"fetched": count, "cats": cats, "days": days, "max_results": max_results}}

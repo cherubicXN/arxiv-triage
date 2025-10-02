@@ -11,6 +11,7 @@ type Props = {
   onOpen: () => void;
   onShortlist: () => void;
   onArchive: () => void;
+  onTriage?: () => void;
   onScore?: (provider?: string) => void;
   availableTags?: string[];
   onAddTag?: (t: string) => void;
@@ -19,7 +20,7 @@ type Props = {
   onSuggest?: () => void;
 };
 
-export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onShortlist, onArchive, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest }: Props) {
+export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onShortlist, onArchive, onTriage, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagInput, setTagInput] = useState("");
@@ -75,7 +76,9 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
         </button>
         <div className="mt-1 flex items-center gap-2 text-xs text-gray-600">
           <Pill>{p.primary_category}</Pill>
-          {p.updated_at && <span>{timeAgo(p.updated_at)}</span>}
+          {(p.announced_date || p.submitted_at) && (
+            <span title="Announced date">{String(p.announced_date || p.submitted_at).slice(0,10)}</span>
+          )}
           <Pill>{p.arxiv_id}</Pill>
           {p.signals?.rubric?.total !== undefined && (
             <span title="Rubric total" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs text-purple-700 border-purple-300 bg-purple-50">
@@ -143,6 +146,9 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
           )}
           <button title="Select (shortlist)" onClick={(e)=>{ e.stopPropagation(); onShortlist(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">select</button>
           <button title="Archive" onClick={(e)=>{ e.stopPropagation(); onArchive(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">archive</button>
+          {onTriage && (
+            <button title="Move to triage" onClick={(e)=>{ e.stopPropagation(); onTriage(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">triage</button>
+          )}
         </div>
       </div>
       {tagOpen && (

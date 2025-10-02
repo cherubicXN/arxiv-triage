@@ -19,6 +19,7 @@ export interface Paper {
     [k: string]: any;
   } | null;
   state: "triage" | "shortlist" | "archived" | "hidden";
+  announced_date?: string;
 }
 
 export interface ListResp { ok: boolean; data: Paper[]; total: number }

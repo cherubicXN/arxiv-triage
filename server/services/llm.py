@@ -82,7 +82,7 @@ def llm_rubric_score(title: str, abstract: str, provider: Optional[str] = None) 
     system = (
         "You are a conservative paper reviewer. Return ONLY a compact JSON object with integer scores."
         " Rubric: novelty(1-5), evidence(1-5), clarity(1-5), reusability(1-5), fit(1-5)."
-        " Guidance: 3 = average/common; 4 = strong and well-supported; 5 = exceptional and rare (<5%)."
+        " Guidance: 1 = poor/no need to read; 2 = not bad; 3 = average/common; 4 = strong and well-supported; 5 = exceptional and rare (<5%)."
         " Be strict; avoid inflating scores. Also include total (sum). Keep it under 200 chars."
     )
     user = (

@@ -59,7 +59,8 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
     params = {
         "search_query": cat_query,
         # use lastUpdatedDate to capture revisions quickly
-        "sortBy": "lastUpdatedDate",
+        # "sortBy": "lastUpdatedDate",
+        "sortBy": "submittedDate",
         "sortOrder": "descending",
         "start": 0,
         "max_results": max_results
@@ -67,9 +68,11 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
     # etiquette: one request per ~3s
     # async with httpx.AsyncClient(timeout=30.0) as client:
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        logger.debug(f"arXiv request params: {params}")
         resp = await client.get(ARXIV_BASE, params=params, headers={"User-Agent": "arxiv-news-agent/0.1 (github.com/you)"})
         resp.raise_for_status()
         text = resp.text
+    print(resp.url)
 
     # Manual parse: basic fields using regex (avoid adding feedparser at runtime)
     # (You can swap to feedparser if you prefer.)
@@ -77,11 +80,15 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
     results = []
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
+    logger.debug(f"now_utc={now.isoformat()} cutoff_utc={cutoff.isoformat()} window_days={days}")
+    kept, total = 0, 0
+    sample_times = []
     for e in entries:
         def _get(tag):
             m = re.search(rf"<{tag}[^>]*>(.*?)</{tag}>", e, re.DOTALL)
             return (m.group(1).strip() if m else None)
         arxiv_id_full = _get("id") or ""
+        # print(arxiv_id_full)
         # id example: http://arxiv.org/abs/2509.01234v2
         m = re.search(r"/abs/(\d{4}\.\d{4,5})(v(\d+))?", arxiv_id_full)
         if not m:
@@ -109,8 +116,12 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
         upd_dt_utc = _to_utc(upd_dt)
 
         # window filter: include if either published or updated within window
+        total += 1
         if not ((pub_dt_utc and pub_dt_utc >= cutoff) or (upd_dt_utc and upd_dt_utc >= cutoff)):
             continue
+        kept += 1
+        if pub_dt_utc or upd_dt_utc:
+            sample_times.append((pub_dt_utc.isoformat() if pub_dt_utc else None, upd_dt_utc.isoformat() if upd_dt_utc else None))
 
         # categories
         cats = re.findall(r'<category term="(.*?)"', e) or []
@@ -148,7 +159,10 @@ async def fetch_arxiv(cats: List[str], days: int, max_results: int) -> List[Dict
             "links_html": f"https://ar5iv.org/html/{arxiv_id}",
             "extra": {}
         })
-    logger.info(f"Fetched {len(results)} entries from arXiv")
+    logger.info(f"Fetched {len(results)} entries from arXiv (total_seen={total}, kept_after_window={kept})")
+    if sample_times:
+        head = sample_times[:5]
+        logger.debug(f"sample published/updated (utc): {head}")
     return results
 
 async def upsert_papers(session: AsyncSession, papers: List[Dict[str, Any]]):
