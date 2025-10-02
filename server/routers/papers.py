@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, or_
 from typing import List, Optional
 from fastapi.responses import StreamingResponse
 import httpx
@@ -98,7 +98,10 @@ async def list_papers(
 ):
     stmt = select(Paper)
     if state:
-        stmt = stmt.where(Paper.state == state)
+        if state == "must_read":
+            stmt = stmt.where(or_(Paper.state == "must_read", Paper.state == "shortlist"))
+        else:
+            stmt = stmt.where(Paper.state == state)
     # Default ordering: arXiv id (desc) then version (desc)
     stmt = stmt.order_by(Paper.arxiv_id.desc(), Paper.version.desc())
     res = await session.execute(stmt)
@@ -142,6 +145,8 @@ async def list_papers(
     out = []
     for r in rows:
         item = PaperOut.model_validate(r).model_dump()
+        if item.get("state") == "shortlist":
+            item["state"] = "must_read"
         item["announced_date"] = _announced_date(r.submitted_at)
         out.append(item)
     return {"ok": True, "data": out, "total": total}
@@ -156,6 +161,8 @@ async def get_paper_by_arxiv_endpoint(
     if not paper:
         raise HTTPException(404, "paper not found")
     item = PaperOut.model_validate(paper).model_dump()
+    if item.get("state") == "shortlist":
+        item["state"] = "must_read"
     item["announced_date"] = _announced_date(paper.submitted_at)
     return item
 
@@ -177,7 +184,10 @@ async def papers_stats(
     """
     stmt = select(Paper)
     if state:
-        stmt = stmt.where(Paper.state == state)
+        if state == "must_read":
+            stmt = stmt.where(or_(Paper.state == "must_read", Paper.state == "shortlist"))
+        else:
+            stmt = stmt.where(Paper.state == state)
     # Base order doesn't matter for stats; reuse deterministic ordering
     stmt = stmt.order_by(Paper.arxiv_id.desc(), Paper.version.desc())
     res = await session.execute(stmt)
@@ -374,7 +384,10 @@ async def histogram_by_day(
 ):
     stmt = select(Paper)
     if state:
-        stmt = stmt.where(Paper.state == state)
+        if state == "must_read":
+            stmt = stmt.where(or_(Paper.state == "must_read", Paper.state == "shortlist"))
+        else:
+            stmt = stmt.where(Paper.state == state)
     stmt = stmt.order_by(Paper.arxiv_id.desc(), Paper.version.desc())
     res = await session.execute(stmt)
     rows = res.scalars().all()

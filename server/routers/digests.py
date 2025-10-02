@@ -20,7 +20,7 @@ env = Environment(
 
 def pick_top(papers, top_k=10):
     # Prefer must_read → further_read → triage (recent)
-    must = [p for p in papers if p.state == PaperState.must_read.value]
+    must = [p for p in papers if p.state == PaperState.must_read.value or p.state == "shortlist"]
     futr = [p for p in papers if p.state == PaperState.further_read.value]
     tri = [p for p in papers if p.state == PaperState.triage.value]
     res = must[:top_k]
