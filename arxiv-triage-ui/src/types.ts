@@ -18,7 +18,7 @@ export interface Paper {
     suggested_tags?: string[];
     [k: string]: any;
   } | null;
-  state: "triage" | "shortlist" | "archived" | "hidden";
+  state: "triage" | "further_read" | "must_read" | "archived" | "hidden";
   announced_date?: string;
 }
 

@@ -9,7 +9,8 @@ type Props = {
   active?: boolean;
   onToggle: () => void;
   onOpen: () => void;
-  onShortlist: () => void;
+  onFurther: () => void;
+  onMust?: () => void;
   onArchive: () => void;
   onTriage?: () => void;
   onScore?: (provider?: string) => void;
@@ -20,7 +21,7 @@ type Props = {
   onSuggest?: () => void;
 };
 
-export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onShortlist, onArchive, onTriage, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest }: Props) {
+export default function PaperRow({ p, checked, active=false, onToggle, onOpen, onFurther, onMust, onArchive, onTriage, onScore, availableTags = [], onAddTag, onDropTag, onRemoveTag, onSuggest }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [tagOpen, setTagOpen] = useState(false);
   const [tagInput, setTagInput] = useState("");
@@ -144,7 +145,10 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
           {onSuggest && (
             <button title="Suggest tags (LLM)" onClick={(e)=>{ e.stopPropagation(); onSuggest(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">suggest</button>
           )}
-          <button title="Select (shortlist)" onClick={(e)=>{ e.stopPropagation(); onShortlist(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">select</button>
+          <button title="Mark further‑read" onClick={(e)=>{ e.stopPropagation(); onFurther(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">further</button>
+          {onMust && (
+            <button title="Mark must‑read" onClick={(e)=>{ e.stopPropagation(); onMust(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">must</button>
+          )}
           <button title="Archive" onClick={(e)=>{ e.stopPropagation(); onArchive(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">archive</button>
           {onTriage && (
             <button title="Move to triage" onClick={(e)=>{ e.stopPropagation(); onTriage(); }} className="rounded-lg border px-2 py-1 text-xs hover:bg-gray-50">triage</button>

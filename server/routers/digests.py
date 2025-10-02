@@ -19,10 +19,13 @@ env = Environment(
 )
 
 def pick_top(papers, top_k=10):
-    # simple heuristic: prefer shortlist → triage by id (recent)
-    short = [p for p in papers if p.state == PaperState.shortlist.value]
+    # Prefer must_read → further_read → triage (recent)
+    must = [p for p in papers if p.state == PaperState.must_read.value]
+    futr = [p for p in papers if p.state == PaperState.further_read.value]
     tri = [p for p in papers if p.state == PaperState.triage.value]
-    res = short[:top_k]
+    res = must[:top_k]
+    if len(res) < top_k:
+        res += futr[: (top_k - len(res))]
     if len(res) < top_k:
         res += tri[: (top_k - len(res))]
     return res

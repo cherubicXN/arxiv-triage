@@ -370,7 +370,8 @@ export default function App() {
       if (!currentId) return;
       if (e.key === 'o' || e.key === 'Enter') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) { setDrawer(p); setAutoOpenOnMove(true); } return; }
       if (e.key === 'n') { e.preventDefault(); setNotesOnly(v=>!v); setPage(1); return; }
-      if (e.key === 's') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'shortlist'); return; }
+      if (e.key === 'f') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'further_read'); return; }
+      if (e.key === 's') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'must_read'); return; }
       if (e.key === 'a') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) mutateByPaper(p, 'archived'); return; }
       if (e.key === 'x' || e.key === ' ') { e.preventDefault(); setChecked((m)=>({ ...m, [currentId]: !m[currentId] })); return; }
       if (e.key === 'r') { e.preventDefault(); const p = visibleItems.find(p=>p.id===currentId); if (p) scoreNow(p); return; }

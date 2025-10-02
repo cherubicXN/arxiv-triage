@@ -8,7 +8,8 @@ from .db import Base
 
 class PaperState(str, enum.Enum):
     triage = "triage"
-    shortlist = "shortlist"
+    further_read = "further_read"
+    must_read = "must_read"
     archived = "archived"
     hidden = "hidden"
 
