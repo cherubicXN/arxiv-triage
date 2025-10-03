@@ -775,8 +775,8 @@ export default function App() {
         onOpenPdf={(arxivId)=> setPdfModal({ arxivId })}
       />
 
-      {/* Shortcut legend */}
-      <div className="fixed bottom-4 right-4 text-xs text-gray-600 bg-white/80 backdrop-blur rounded-xl border px-3 py-2 shadow-sm">
+      {/* Shortcut legend (desktop only) */}
+      <div className="hidden sm:block fixed bottom-4 right-4 text-xs text-gray-600 bg-white/80 backdrop-blur rounded-xl border px-3 py-2 shadow-sm">
         <div className="font-medium">Shortcuts</div>
         <div>/ search · Esc close drawer</div>
         <div>j/k move · o open · x select</div>
