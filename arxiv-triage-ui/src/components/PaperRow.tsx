@@ -57,7 +57,7 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
     <div
       data-paper-id={p.id}
       className={(() => {
-        const base = "group grid grid-cols-[24px_1fr_auto] gap-3 items-start px-3 py-3 border-b relative cursor-pointer ";
+        const base = "group grid grid-cols-[24px_1fr] sm:grid-cols-[24px_1fr_auto] gap-3 items-start px-3 py-3 border-b relative cursor-pointer ";
         const bg = active ? "bg-blue-100" : (checked ? "bg-amber-100" : "bg-white hover:bg-gray-50");
         const ring = isDragOver ? " ring-2 ring-blue-300" : (active ? " ring-2 ring-blue-300" : (checked ? " ring-1 ring-amber-300" : ""));
         return base + bg + ring;
@@ -68,12 +68,12 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
       onClick={onOpen}
     >
       <input type="checkbox" checked={checked} onChange={onToggle} onClick={(e)=>e.stopPropagation()} className="mt-1" />
-      <div className="min-w-0">
+      <div className="min-w-0 col-start-2 col-span-1">
         <div className="text-sm text-gray-500 truncate">{p.authors}</div>
         <button onClick={onOpen} className="text-left font-semibold leading-snug group-hover:underline">
           {p.title}
         </button>
-        <div className="mt-1 flex items-center gap-2 text-xs text-gray-600">
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
           <Pill>{p.primary_category}</Pill>
           {(p.announced_date || p.submitted_at) && (
             <span title="Announced date">{String(p.announced_date || p.submitted_at).slice(0,10)}</span>
@@ -90,7 +90,7 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
             </span>
           )}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+        <div className="mt-1 flex flex-wrap items-center justify-start gap-1 text-xs">
           {(existing.length > 0) ? (
             existing.map(t => (
               <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs text-green-700 border-green-300 bg-green-50">
@@ -120,8 +120,8 @@ export default function PaperRow({ p, checked, active=false, onToggle, onOpen, o
         )}
         {/* abstract preview removed to keep list compact */}
       </div>
-      <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
-        <div className="grid grid-cols-2 gap-1">
+      <div className="col-span-2 sm:col-span-1 flex items-center gap-2 sm:opacity-0 sm:group-hover:opacity-100 transition mt-2 sm:mt-0">
+        <div className="grid grid-cols-3 sm:grid-cols-2 gap-1 w-full sm:w-auto">
           <a title="Abs" href={p.links_abs} target="_blank" rel="noreferrer" onClick={(e)=>e.stopPropagation()} className="rounded-lg border px-2 py-1 text-xs text-center hover:bg-gray-50">abs ↗</a>
           <a title="PDF" href={p.links_pdf} target="_blank" rel="noreferrer" onClick={(e)=>e.stopPropagation()} className="rounded-lg border px-2 py-1 text-xs text-center hover:bg-gray-50">pdf ↗</a>
           {onScore && (
