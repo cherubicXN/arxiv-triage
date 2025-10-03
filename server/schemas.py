@@ -100,3 +100,8 @@ class IngestReq(BaseModel):
 
 class IngestByIdReq(BaseModel):
     arxiv_id: str
+
+class IngestOAIReq(BaseModel):
+    days: int = 1
+    cats: Optional[List[str]] = None
+    use_checkpoint: bool = True

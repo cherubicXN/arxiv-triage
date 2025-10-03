@@ -33,7 +33,7 @@ def _env_or_cfg_categories(cfg) -> List[str]:
     env_cats = os.getenv("ARXIV_CATEGORIES", "").strip()
     if env_cats:
         return [x.strip() for x in env_cats.split(",") if x.strip()]
-    return cfg.get("sources", {}).get("cats", ["cs.CV", "cs.LG"])
+    return cfg.get("sources", {}).get("cats", ["cs.CV", "cs.LG", "cs.RO"])
 
 def _env_or_cfg_window_days(cfg) -> int:
     d = os.getenv("ARXIV_WINDOW_DAYS", "").strip()

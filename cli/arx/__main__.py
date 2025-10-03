@@ -12,6 +12,7 @@ def pull(
     cat: Optional[list[str]] = typer.Option(None, "--cat", "-c", help="Repeatable category option, e.g. -c cs.CV -c cs.LG"),
     cats: Optional[str] = typer.Option(None, help="Comma-separated categories (alternative to --cat)"),
     max_results: int = typer.Option(200, help="Max results to fetch"),
+    oai: bool = typer.Option(False, help="Use OAI-PMH incremental harvester"),
 ):
     """
     Ingest today's papers for one or more categories.
@@ -20,13 +21,16 @@ def pull(
       2) --cats comma-separated string
       3) None → let server use config/env defaults
     """
-    url = f"{API}/v1/ingest/today"
+    url = f"{API}/v1/ingest/oai" if oai else f"{API}/v1/ingest/today"
     cats_list = None
     if cat and len(cat) > 0:
         cats_list = [c.strip() for c in cat if c and c.strip()]
     elif cats:
         cats_list = [x.strip() for x in cats.split(",") if x.strip()]
-    payload = {"days": days, "cats": cats_list, "max_results": max_results}
+    if oai:
+        payload = {"days": days, "cats": cats_list, "use_checkpoint": True}
+    else:
+        payload = {"days": days, "cats": cats_list, "max_results": max_results}
     r = requests.post(url, json=payload, timeout=120)
     typer.echo(r.json())
 
