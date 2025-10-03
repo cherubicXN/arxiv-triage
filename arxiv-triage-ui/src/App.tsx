@@ -199,6 +199,15 @@ export default function App() {
     try { mq.addEventListener('change', update); } catch { /* safari */ mq.addListener(update as any); }
     return () => { try { mq.removeEventListener('change', update);} catch { try{ mq.removeListener(update as any);}catch{} } };
   }, []);
+  const openPdfSmart = React.useCallback((arxivId: string) => {
+    const url = `${API_BASE}/v1/papers/by_arxiv/${arxivId}/pdf`;
+    if (isSmall) {
+      try { window.open(url, '_blank'); }
+      catch { window.location.href = url; }
+      return;
+    }
+    setPdfModal({ arxivId });
+  }, [isSmall]);
   // Reset preview load flags whenever modal opens
   useEffect(() => {
     if (!pdfModal) return;
@@ -633,7 +642,7 @@ export default function App() {
                 onArchive={()=>mutateByPaper(p, "archived")}
                 onTriage={()=>mutateByPaper(p, "triage")}
                 onScore={()=>scoreNow(p)}
-                onOpenPdf={(arxivId)=> setPdfModal({ arxivId })}
+                onOpenPdf={(arxivId)=> openPdfSmart(arxivId)}
                 availableTags={paletteTags}
                 onAddTag={(t)=>tagAdd(p.id, t)}
                 onDropTag={(t, pid)=>{
@@ -772,7 +781,7 @@ export default function App() {
           } finally { setLoading(false); }
         }}
         apiBase={API_BASE}
-        onOpenPdf={(arxivId)=> setPdfModal({ arxivId })}
+        onOpenPdf={(arxivId)=> openPdfSmart(arxivId)}
       />
 
       {/* Shortcut legend (desktop only) */}
