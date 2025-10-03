@@ -187,6 +187,31 @@ export default function App() {
   const [pdfModal, setPdfModal] = useState<{ arxivId: string } | null>(null);
   const pdfModalRef = React.useRef<HTMLDivElement | null>(null);
   useEffect(() => { if (pdfModal) { pdfModalRef.current?.focus(); } }, [pdfModal]);
+  const [isSmall, setIsSmall] = useState<boolean>(false);
+  const [previewLoaded, setPreviewLoaded] = useState<boolean>(false);
+  const [previewFailed, setPreviewFailed] = useState<boolean>(false);
+  const failTimerRef = React.useRef<number | null>(null);
+  const previewLoadedRef = React.useRef<boolean>(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)');
+    const update = () => { setIsSmall(mq.matches); };
+    update();
+    try { mq.addEventListener('change', update); } catch { /* safari */ mq.addListener(update as any); }
+    return () => { try { mq.removeEventListener('change', update);} catch { try{ mq.removeListener(update as any);}catch{} } };
+  }, []);
+  // Reset preview load flags whenever modal opens
+  useEffect(() => {
+    if (!pdfModal) return;
+    setPreviewLoaded(false);
+    previewLoadedRef.current = false;
+    setPreviewFailed(false);
+    if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
+    // Give the embedded viewer a bit more time to load on slower connections
+    failTimerRef.current = window.setTimeout(() => {
+      if (!previewLoadedRef.current) setPreviewFailed(true);
+    }, 4000) as any;
+    return () => { if (failTimerRef.current) window.clearTimeout(failTimerRef.current); };
+  }, [pdfModal]);
   const [calendarMonth, setCalendarMonth] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -485,7 +510,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* API status banner */}
-      <div className="fixed top-3 right-3 z-50 text-xs">
+      <div className="hidden sm:block fixed top-3 right-3 z-50 text-xs">
         <a
           href={`${API_BASE}/docs`}
           target="_blank"
@@ -762,7 +787,8 @@ export default function App() {
       {/* PDF modal (popup, not full-screen) */}
       {pdfModal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={()=> setPdfModal(null)}>
-          <div ref={pdfModalRef} tabIndex={-1} className="bg-white rounded-2xl shadow-2xl border w-[96vw] h-[90vh] md:w-[88vw] lg:w-[75vw] relative overflow-hidden" onClick={(e)=>e.stopPropagation()}>
+          {/* Fullscreen on mobile for better usability; modal on md+ */}
+          <div ref={pdfModalRef} tabIndex={-1} className="bg-white shadow-2xl border relative overflow-hidden w-screen h-[100dvh] sm:rounded-2xl sm:w-[96vw] sm:h-[92vh] md:w-[88vw] lg:w-[75vw]" onClick={(e)=>e.stopPropagation()}>
             <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
               <a
                 href={`${API_BASE}/v1/papers/by_arxiv/${pdfModal.arxivId}/pdf`}
@@ -770,16 +796,46 @@ export default function App() {
                 rel="noreferrer"
                 className="rounded-xl border px-3 py-1.5 bg-white hover:bg-gray-50"
               >Open ↗</a>
+              <a
+                href={`https://ar5iv.org/html/${pdfModal.arxivId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="hidden sm:inline-block rounded-xl border px-3 py-1.5 bg-white hover:bg-gray-50"
+              >Open HTML ↗</a>
               <button
                 className="rounded-xl border px-3 py-1.5 bg-white hover:bg-gray-50"
                 onClick={()=> setPdfModal(null)}
               >Close</button>
             </div>
+            {/* Always prefer PDF embed. If it fails to load, show actionable overlay. */}
             <iframe
               title="PDF preview"
-              src={`${API_BASE}/v1/papers/by_arxiv/${pdfModal.arxivId}/pdf`}
+              src={`${API_BASE}/v1/papers/by_arxiv/${pdfModal.arxivId}/pdf#zoom=page-fit`}
               className="w-full h-full"
+              onLoad={()=> {
+                previewLoadedRef.current = true;
+                setPreviewLoaded(true);
+                setPreviewFailed(false);
+                if (failTimerRef.current) window.clearTimeout(failTimerRef.current);
+              }}
+              onError={()=> { setPreviewFailed(true); }}
             />
+            {!previewLoaded && (
+              <div className="absolute top-2 left-2 text-xs rounded-md border bg-white/90 backdrop-blur px-2 py-1 text-gray-700">
+                Loading PDF…
+              </div>
+            )}
+            {isSmall && previewFailed && !previewLoaded && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="mx-4 rounded-xl border bg-white/90 backdrop-blur p-3 text-center text-sm text-gray-700">
+                  Unable to display inline PDF preview on this device.
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <a className="rounded-lg border px-3 py-1 bg-white hover:bg-gray-50" href={`${API_BASE}/v1/papers/by_arxiv/${pdfModal.arxivId}/pdf`} target="_blank" rel="noreferrer">Open PDF ↗</a>
+                    <a className="rounded-lg border px-3 py-1 bg-white hover:bg-gray-50" href={`https://ar5iv.org/html/${pdfModal.arxivId}`} target="_blank" rel="noreferrer">Open HTML ↗</a>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

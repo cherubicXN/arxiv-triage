@@ -19,6 +19,7 @@ type Props = {
 
 export default function TopBar({ query, setQuery, state, setStateFilter, refresh, fetchById, quickFilters, toggleFilter, selectedTag, onCreateTag, notesOnly=false, setNotesOnly }: Props) {
   const [newTag, setNewTag] = React.useState("");
+  const [showFiltersMobile, setShowFiltersMobile] = React.useState(false);
   const tabs: { key: Paper["state"] | ""; label: string }[] = [
     { key: "", label: "All#1" },
     { key: "triage", label: "Triage#2" },
@@ -57,36 +58,52 @@ export default function TopBar({ query, setQuery, state, setStateFilter, refresh
           }}
           title="Fetch paper by arXiv ID"
         >Fetch ID</button>
+        {/* Mobile filter toggle */}
+        <button
+          className="sm:hidden rounded-xl border px-3 py-2 hover:bg-gray-50"
+          onClick={() => setShowFiltersMobile(v => !v)}
+          aria-expanded={showFiltersMobile}
+          aria-controls="topbar-filters"
+        >Filters</button>
       </div>
-      <div className="max-w-7xl mx-auto px-4 pb-2 flex flex-wrap gap-2 items-center">
-        <span className="text-xs text-gray-500 mr-1">Tags:</span>
-        <input
-          value={newTag}
-          onChange={(e)=>setNewTag(e.target.value)}
-          onKeyDown={(e)=>{ if (e.key==='Enter' && newTag.trim()) { onCreateTag?.(newTag.trim()); setNewTag(""); } }}
-          placeholder="New tag"
-          className="text-xs border rounded px-2 py-1 w-28 mr-2"
-        />
-        {quickFilters.map((qf) => {
-          const isEmpty = qf === "empty";
-          return (
-            <button
-              key={qf}
-              onClick={() => toggleFilter(qf)}
-              draggable={!isEmpty}
-              onDragStart={(e)=>{ if (!isEmpty) { try{ e.dataTransfer.setData('text/plain', qf); }catch{} } }}
-              className={cls(
-                "px-2 py-1 rounded-full border text-xs",
-                isEmpty ? "text-red-600 border-red-300 bg-red-50" : "",
-                selectedTag === qf && !isEmpty ? "bg-gray-900 text-white border-gray-900" : (!isEmpty ? "hover:bg-gray-50" : "")
-              )}
-              title={isEmpty ? "Show papers without tags" : undefined}
-            >
-              {isEmpty ? "empty" : `#${qf}`}
-            </button>
-          );
-        })}
+      <div id="topbar-filters" className="max-w-7xl mx-auto px-4 pb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 mr-1">Tags:</span>
+          <input
+            value={newTag}
+            onChange={(e)=>setNewTag(e.target.value)}
+            onKeyDown={(e)=>{ if (e.key==='Enter' && newTag.trim()) { onCreateTag?.(newTag.trim()); setNewTag(""); } }}
+            placeholder="New tag"
+            className="text-xs border rounded px-2 py-1 w-28 mr-2"
+          />
+        </div>
+        {/* Tags are horizontally scrollable on mobile to avoid wrapping overflow */}
+        <div className="mt-2 overflow-x-auto whitespace-nowrap no-scrollbar flex gap-2 pb-1 sm:flex-wrap sm:whitespace-normal">
+          {quickFilters.map((qf) => {
+            const isEmpty = qf === "empty";
+            return (
+              <button
+                key={qf}
+                onClick={() => toggleFilter(qf)}
+                draggable={!isEmpty}
+                onDragStart={(e)=>{ if (!isEmpty) { try{ e.dataTransfer.setData('text/plain', qf); }catch{} } }}
+                className={cls(
+                  "px-2 py-1 rounded-full border text-xs inline-block",
+                  isEmpty ? "text-red-600 border-red-300 bg-red-50" : "",
+                  selectedTag === qf && !isEmpty ? "bg-gray-900 text-white border-gray-900" : (!isEmpty ? "hover:bg-gray-50" : "")
+                )}
+                title={isEmpty ? "Show papers without tags" : undefined}
+              >
+                {isEmpty ? "empty" : `#${qf}`}
+              </button>
+            );
+          })}
+        </div>
       </div>
+      {/* Collapse filters on mobile when toggled off */}
+      {!showFiltersMobile && (
+        <style>{`@media (max-width: 640px){ #topbar-filters{ display:none; } }`}</style>
+      )}
     </div>
   );
 }
